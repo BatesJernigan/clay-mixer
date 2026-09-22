@@ -8,13 +8,13 @@ export interface ClayColor {
 
 export interface RecipeIngredient {
   clay: ClayColor;
-  weight: number;
+  parts: number;
   percent: number;
-  amount: number;
 }
 
 export interface Recipe {
   ingredients: RecipeIngredient[];
+  ratioLabel: string;
   predictedHex: string;
   deltaE: number;
 }

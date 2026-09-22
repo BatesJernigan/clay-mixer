@@ -1,5 +1,6 @@
 import { ClayColor, Recipe, RecipeIngredient } from "./types";
 import {
+  Lab,
   RGB,
   deltaE,
   hexToRgb,
@@ -98,6 +99,49 @@ function solveWeights(colors: RGB[], target: RGB): number[] {
   return full;
 }
 
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+function gcdOfAll(nums: number[]): number {
+  return nums.reduce((a, b) => gcd(a, b));
+}
+
+/**
+ * Converts continuous mix weights into a small-integer part ratio (e.g. "1 : 5 : 10"),
+ * trying coarser denominators first and only refining precision when the rounding
+ * would otherwise visibly worsen the color match.
+ */
+function weightsToParts(
+  weights: number[],
+  comboRgb: RGB[],
+  targetLab: Lab,
+  baseDeltaE: number
+): number[] {
+  if (weights.length === 1) return [1];
+
+  const minWeight = Math.min(...weights);
+  const denominators = [1, 2, 4, 10];
+  const tolerance = Math.max(baseDeltaE + 2, 6);
+
+  for (const denom of denominators) {
+    const raw = weights.map((w) => Math.max(1, Math.round((w / minWeight) * denom)));
+    const divisor = gcdOfAll(raw);
+    const parts = raw.map((x) => x / divisor);
+
+    const partsSum = parts.reduce((a, b) => a + b, 0);
+    const approxWeights = parts.map((p) => p / partsSum);
+    const predicted = mixRgb(comboRgb, approxWeights);
+    const error = deltaE(rgbToLab(predicted), targetLab);
+
+    if (error <= tolerance || denom === denominators[denominators.length - 1]) {
+      return parts;
+    }
+  }
+
+  return weights.map(() => 1);
+}
+
 function* combinations<T>(items: T[], size: number): Generator<T[]> {
   if (size === 0) {
     yield [];
@@ -112,7 +156,6 @@ function* combinations<T>(items: T[], size: number): Generator<T[]> {
 
 export interface RecipeOptions {
   maxColors?: number;
-  totalAmount?: number;
   candidatePoolSize?: number;
 }
 
@@ -121,7 +164,7 @@ export function computeRecipe(
   targetHex: string,
   options: RecipeOptions = {}
 ): Recipe | null {
-  const { maxColors = 3, totalAmount = 100, candidatePoolSize = 20 } = options;
+  const { maxColors = 3, candidatePoolSize = 20 } = options;
   if (library.length === 0) return null;
 
   const target = hexToRgb(targetHex);
@@ -175,22 +218,31 @@ export function computeRecipe(
     .sort((a, b) => b.weight - a.weight);
 
   const weightSum = chosen.reduce((a, c) => a + c.weight, 0);
-  const ingredients: RecipeIngredient[] = chosen.map((c) => {
-    const normalizedWeight = weightSum > 0 ? c.weight / weightSum : 0;
-    return {
-      clay: c.clay,
-      weight: normalizedWeight,
-      percent: normalizedWeight * 100,
-      amount: normalizedWeight * totalAmount,
-    };
-  });
+  const normalizedWeights = chosen.map((c) =>
+    weightSum > 0 ? c.weight / weightSum : 0
+  );
+  const chosenRgb = chosen.map((c) => hexToRgb(c.clay.hex));
+  const parts = weightsToParts(
+    normalizedWeights,
+    chosenRgb,
+    targetLab,
+    best.score
+  );
+  const partsSum = parts.reduce((a, b) => a + b, 0);
+
+  const ingredients: RecipeIngredient[] = chosen.map((c, i) => ({
+    clay: c.clay,
+    parts: parts[i],
+    percent: (parts[i] / partsSum) * 100,
+  }));
 
   const finalRgb = mixRgb(
-    ingredients.map((i) => hexToRgb(i.clay.hex)),
-    ingredients.map((i) => i.weight)
+    chosenRgb,
+    parts.map((p) => p / partsSum)
   );
   const predictedHex = rgbToHex(finalRgb);
   const finalDeltaE = deltaE(rgbToLab(finalRgb), targetLab);
+  const ratioLabel = parts.join(" : ");
 
-  return { ingredients, predictedHex, deltaE: finalDeltaE };
+  return { ingredients, ratioLabel, predictedHex, deltaE: finalDeltaE };
 }

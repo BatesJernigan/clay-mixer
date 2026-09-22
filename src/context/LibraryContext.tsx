@@ -19,6 +19,7 @@ interface LibraryContextValue {
   updateColor: (id: string, updates: Partial<Omit<ClayColor, "id">>) => void;
   removeColor: (id: string) => void;
   resetToSeed: () => void;
+  importColors: (colors: Omit<ClayColor, "id" | "createdAt">[]) => number;
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
@@ -73,9 +74,34 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   const resetToSeed = () => setColors(seedLibrary());
 
+  const importColors: LibraryContextValue["importColors"] = (newColors) => {
+    const existingKeys = new Set(
+      colors.map((c) => `${c.brand.toLowerCase()}::${c.name.toLowerCase()}`)
+    );
+    const toAdd = newColors.filter(
+      (c) => !existingKeys.has(`${c.brand.toLowerCase()}::${c.name.toLowerCase()}`)
+    );
+    if (toAdd.length > 0) {
+      const now = Date.now();
+      setColors((prev) => [
+        ...prev,
+        ...toAdd.map((c) => ({ ...c, id: crypto.randomUUID(), createdAt: now })),
+      ]);
+    }
+    return toAdd.length;
+  };
+
   return (
     <LibraryContext.Provider
-      value={{ colors, loaded, addColor, updateColor, removeColor, resetToSeed }}
+      value={{
+        colors,
+        loaded,
+        addColor,
+        updateColor,
+        removeColor,
+        resetToSeed,
+        importColors,
+      }}
     >
       {children}
     </LibraryContext.Provider>

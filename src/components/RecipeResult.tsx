@@ -4,7 +4,6 @@ import { ColorSwatch } from "./ColorSwatch";
 interface RecipeResultProps {
   recipe: Recipe;
   targetHex: string;
-  unit: string;
 }
 
 function matchQuality(deltaE: number): { label: string; className: string } {
@@ -14,7 +13,7 @@ function matchQuality(deltaE: number): { label: string; className: string } {
   return { label: "Rough match", className: "text-red-700 bg-red-50" };
 }
 
-export function RecipeResult({ recipe, targetHex, unit }: RecipeResultProps) {
+export function RecipeResult({ recipe, targetHex }: RecipeResultProps) {
   const quality = matchQuality(recipe.deltaE);
 
   return (
@@ -36,7 +35,13 @@ export function RecipeResult({ recipe, targetHex, unit }: RecipeResultProps) {
         </span>
       </div>
 
-      <ul className="mt-4 flex flex-col gap-3">
+      {recipe.ingredients.length > 1 && (
+        <p className="mt-4 text-sm text-neutral-500">
+          Ratio <span className="font-mono text-neutral-800">{recipe.ratioLabel}</span>
+        </p>
+      )}
+
+      <ul className="mt-3 flex flex-col gap-3">
         {recipe.ingredients.map((ing) => (
           <li key={ing.clay.id} className="flex items-center gap-3">
             <ColorSwatch hex={ing.clay.hex} size={36} />
@@ -48,7 +53,7 @@ export function RecipeResult({ recipe, targetHex, unit }: RecipeResultProps) {
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-neutral-900">
-                {ing.amount.toFixed(1)} {unit}
+                {ing.parts} {ing.parts === 1 ? "part" : "parts"}
               </p>
               <p className="text-xs text-neutral-500">{ing.percent.toFixed(1)}%</p>
             </div>

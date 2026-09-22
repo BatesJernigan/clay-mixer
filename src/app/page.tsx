@@ -10,14 +10,12 @@ import Link from "next/link";
 export default function MixerPage() {
   const { colors, loaded } = useLibrary();
   const [targetHex, setTargetHex] = useState("#c97b5f");
-  const [totalAmount, setTotalAmount] = useState(100);
-  const [unit, setUnit] = useState("g");
   const [maxColors, setMaxColors] = useState(3);
 
   const recipe = useMemo(() => {
     if (colors.length === 0) return null;
-    return computeRecipe(colors, targetHex, { totalAmount, maxColors });
-  }, [colors, targetHex, totalAmount, maxColors]);
+    return computeRecipe(colors, targetHex, { maxColors });
+  }, [colors, targetHex, maxColors]);
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">
@@ -54,29 +52,6 @@ export default function MixerPage() {
 
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-neutral-700">
-                  Total amount
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    value={totalAmount}
-                    onChange={(e) =>
-                      setTotalAmount(Math.max(1, Number(e.target.value) || 0))
-                    }
-                    className="w-24 rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                  />
-                  <input
-                    type="text"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="w-16 rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-neutral-700">
                   Max colors in recipe
                 </label>
                 <select
@@ -95,7 +70,7 @@ export default function MixerPage() {
           </div>
 
           {recipe && (
-            <RecipeResult recipe={recipe} targetHex={targetHex} unit={unit} />
+            <RecipeResult recipe={recipe} targetHex={targetHex} />
           )}
         </div>
       )}

@@ -6,6 +6,57 @@ import { ColorSwatch } from "@/components/ColorSwatch";
 import { HexColorField } from "@/components/HexColorField";
 import { ClayColor } from "@/lib/types";
 import { isValidHex, normalizeHex } from "@/lib/color";
+import { premoColors } from "@/lib/premoColors";
+
+function ImportPremoButton() {
+  const { colors, importColors } = useLibrary();
+  const [message, setMessage] = useState<string | null>(null);
+
+  const existingKeys = useMemo(
+    () =>
+      new Set(
+        colors.map((c) => `${c.brand.toLowerCase()}::${c.name.toLowerCase()}`)
+      ),
+    [colors]
+  );
+  const missingCount = premoColors.filter(
+    (c) => !existingKeys.has(`${c.brand.toLowerCase()}::${c.name.toLowerCase()}`)
+  ).length;
+
+  if (missingCount === 0) {
+    return (
+      <div className="rounded-lg border border-neutral-200 bg-white p-5 text-sm text-neutral-600">
+        All {premoColors.length} Sculpey Premo colors are already in your library.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-900">
+            Sculpey Premo full color line
+          </h2>
+          <p className="mt-1 text-sm text-neutral-600">
+            Import {missingCount} color{missingCount === 1 ? "" : "s"} from the
+            official Premo Oven Bake Clay lineup.
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            const added = importColors(premoColors);
+            setMessage(`Added ${added} color${added === 1 ? "" : "s"}.`);
+          }}
+          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+        >
+          Import Premo colors
+        </button>
+      </div>
+      {message && <p className="mt-2 text-sm text-green-700">{message}</p>}
+    </div>
+  );
+}
 
 function AddColorForm() {
   const { addColor, colors } = useLibrary();
@@ -165,6 +216,7 @@ export default function LibraryPage() {
       </div>
 
       <div className="flex flex-col gap-6">
+        <ImportPremoButton />
         <AddColorForm />
 
         {byBrand.map(([brand, brandColors]) => (
