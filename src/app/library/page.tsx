@@ -131,42 +131,6 @@ function AddColorForm() {
 }
 
 function LibraryRow({ clay }: { clay: ClayColor }) {
-  const { updateColor, removeColor } = useLibrary();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(clay.name);
-  const [hex, setHex] = useState(clay.hex);
-
-  const save = () => {
-    if (!name.trim() || !isValidHex(hex)) return;
-    updateColor(clay.id, { name: name.trim(), hex: normalizeHex(hex) });
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <li className="flex flex-wrap items-center gap-3 py-3">
-        <HexColorField value={hex} onChange={setHex} />
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="flex-1 min-w-[10rem] rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
-        />
-        <button
-          onClick={save}
-          className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
-        >
-          Save
-        </button>
-        <button
-          onClick={() => setEditing(false)}
-          className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
-        >
-          Cancel
-        </button>
-      </li>
-    );
-  }
-
   return (
     <li className="flex items-center gap-3 py-3">
       <ColorSwatch hex={clay.hex} size={36} />
@@ -174,18 +138,6 @@ function LibraryRow({ clay }: { clay: ClayColor }) {
         <p className="text-sm font-medium text-neutral-900">{clay.name}</p>
         <p className="text-xs font-mono text-neutral-500">{clay.hex}</p>
       </div>
-      <button
-        onClick={() => setEditing(true)}
-        className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
-      >
-        Edit
-      </button>
-      <button
-        onClick={() => removeColor(clay.id)}
-        className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-      >
-        Delete
-      </button>
     </li>
   );
 }
@@ -225,16 +177,20 @@ export default function LibraryPage() {
       </div>
 
       <div className="flex flex-col gap-6">
-        <ImportBrandButton
-          brandLabel={PREMO_BRAND}
-          brandColors={premoColors}
-          lineLabel="Sculpey Premo full color line"
-        />
-        <ImportBrandButton
-          brandLabel={SOUFFLE_BRAND}
-          brandColors={souffleColors}
-          lineLabel="Sculpey Souffle full color line"
-        />
+        {process.env.NODE_ENV === "development" && (
+          <>
+            <ImportBrandButton
+              brandLabel={PREMO_BRAND}
+              brandColors={premoColors}
+              lineLabel="Sculpey Premo full color line"
+            />
+            <ImportBrandButton
+              brandLabel={SOUFFLE_BRAND}
+              brandColors={souffleColors}
+              lineLabel="Sculpey Souffle full color line"
+            />
+          </>
+        )}
         <AddColorForm />
 
         {byBrand.map(([brand, brandColors]) => (

@@ -16,8 +16,6 @@ interface LibraryContextValue {
   colors: ClayColor[];
   loaded: boolean;
   addColor: (color: Omit<ClayColor, "id" | "createdAt">) => void;
-  updateColor: (id: string, updates: Partial<Omit<ClayColor, "id">>) => void;
-  removeColor: (id: string) => void;
   resetToSeed: () => void;
   importColors: (colors: Omit<ClayColor, "id" | "createdAt">[]) => number;
 }
@@ -62,16 +60,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     ]);
   };
 
-  const updateColor: LibraryContextValue["updateColor"] = (id, updates) => {
-    setColors((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
-    );
-  };
-
-  const removeColor: LibraryContextValue["removeColor"] = (id) => {
-    setColors((prev) => prev.filter((c) => c.id !== id));
-  };
-
   const resetToSeed = () => setColors(seedLibrary());
 
   const importColors: LibraryContextValue["importColors"] = (newColors) => {
@@ -97,8 +85,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         colors,
         loaded,
         addColor,
-        updateColor,
-        removeColor,
         resetToSeed,
         importColors,
       }}
