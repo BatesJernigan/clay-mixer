@@ -15,7 +15,7 @@ export const premoColors: Omit<ClayColor, "id" | "createdAt">[] = [
   { brand: PREMO_BRAND, name: "Pearl", hex: "#e6e2e0" },
   { brand: PREMO_BRAND, name: "White Translucent", hex: "#f7d9a4" },
   { brand: PREMO_BRAND, name: "Translucent", hex: "#ebcfa6" },
-  { brand: PREMO_BRAND, name: "Glow", hex: "#efefa9" },
+  { brand: PREMO_BRAND, name: "Glow In The Dark", hex: "#efefa9" },
   { brand: PREMO_BRAND, name: "Opal", hex: "#e2d9dc" },
   { brand: PREMO_BRAND, name: "Beige", hex: "#f7c79e" },
   { brand: PREMO_BRAND, name: "Ecru", hex: "#ddc48a" },

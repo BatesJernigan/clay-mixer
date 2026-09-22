@@ -1,5 +1,6 @@
 import { ClayColor } from "./types";
 import { premoColors } from "./premoColors";
+import { souffleColors } from "./souffleColors";
 
 let counter = 0;
 function id(): string {
@@ -11,6 +12,7 @@ export function seedLibrary(): ClayColor[] {
   const now = Date.now();
   const entries: Omit<ClayColor, "id" | "createdAt">[] = [
     ...premoColors,
+    ...souffleColors,
     { brand: "Fimo Professional", name: "White", hex: "#f7f3ea" },
     { brand: "Fimo Professional", name: "Black", hex: "#1f1c1a" },
     { brand: "Fimo Professional", name: "True Red", hex: "#c1272d" },

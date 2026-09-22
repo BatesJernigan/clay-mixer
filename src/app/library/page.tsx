@@ -6,9 +6,18 @@ import { ColorSwatch } from "@/components/ColorSwatch";
 import { HexColorField } from "@/components/HexColorField";
 import { ClayColor } from "@/lib/types";
 import { isValidHex, normalizeHex } from "@/lib/color";
-import { premoColors } from "@/lib/premoColors";
+import { premoColors, PREMO_BRAND } from "@/lib/premoColors";
+import { souffleColors, SOUFFLE_BRAND } from "@/lib/souffleColors";
 
-function ImportPremoButton() {
+function ImportBrandButton({
+  brandLabel,
+  brandColors,
+  lineLabel,
+}: {
+  brandLabel: string;
+  brandColors: Omit<ClayColor, "id" | "createdAt">[];
+  lineLabel: string;
+}) {
   const { colors, importColors } = useLibrary();
   const [message, setMessage] = useState<string | null>(null);
 
@@ -19,14 +28,14 @@ function ImportPremoButton() {
       ),
     [colors]
   );
-  const missingCount = premoColors.filter(
+  const missingCount = brandColors.filter(
     (c) => !existingKeys.has(`${c.brand.toLowerCase()}::${c.name.toLowerCase()}`)
   ).length;
 
   if (missingCount === 0) {
     return (
       <div className="rounded-lg border border-neutral-200 bg-white p-5 text-sm text-neutral-600">
-        All {premoColors.length} Sculpey Premo colors are already in your library.
+        All {brandColors.length} {brandLabel} colors are already in your library.
       </div>
     );
   }
@@ -36,21 +45,21 @@ function ImportPremoButton() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">
-            Sculpey Premo full color line
+            {lineLabel}
           </h2>
           <p className="mt-1 text-sm text-neutral-600">
             Import {missingCount} color{missingCount === 1 ? "" : "s"} from the
-            official Premo Oven Bake Clay lineup.
+            official {brandLabel} lineup.
           </p>
         </div>
         <button
           onClick={() => {
-            const added = importColors(premoColors);
+            const added = importColors(brandColors);
             setMessage(`Added ${added} color${added === 1 ? "" : "s"}.`);
           }}
           className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
         >
-          Import Premo colors
+          Import {brandLabel} colors
         </button>
       </div>
       {message && <p className="mt-2 text-sm text-green-700">{message}</p>}
@@ -216,7 +225,16 @@ export default function LibraryPage() {
       </div>
 
       <div className="flex flex-col gap-6">
-        <ImportPremoButton />
+        <ImportBrandButton
+          brandLabel={PREMO_BRAND}
+          brandColors={premoColors}
+          lineLabel="Sculpey Premo full color line"
+        />
+        <ImportBrandButton
+          brandLabel={SOUFFLE_BRAND}
+          brandColors={souffleColors}
+          lineLabel="Sculpey Souffle full color line"
+        />
         <AddColorForm />
 
         {byBrand.map(([brand, brandColors]) => (
