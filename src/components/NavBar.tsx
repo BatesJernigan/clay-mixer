@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/", label: "Mixer" },
   { href: "/library", label: "Library" },
+  { href: "/autumn", label: "Autumn Mixes" },
 ];
 
 export function NavBar() {
