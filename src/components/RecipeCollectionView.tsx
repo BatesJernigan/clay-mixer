@@ -5,26 +5,44 @@ import Link from "next/link";
 import { useLibrary } from "@/context/LibraryContext";
 import { RecipeResult } from "@/components/RecipeResult";
 import { computeRecipe } from "@/lib/mix";
-import { autumnCollection } from "@/lib/presetMixes";
+import { complementaryHex } from "@/lib/color";
+import { PresetCollection } from "@/lib/presetMixes";
 
-export default function AutumnMixesPage() {
+export function RecipeCollectionView({
+  collection,
+}: {
+  collection: PresetCollection;
+}) {
   const { colors, loaded } = useLibrary();
 
   const recipes = useMemo(() => {
     if (colors.length === 0) return [];
-    return autumnCollection.mixes.map((mix) => ({
-      mix,
-      recipe: computeRecipe(colors, mix.targetHex, { maxColors: 3 }),
-    }));
-  }, [colors]);
+    return collection.mixes.map((mix) => {
+      const complementHex = complementaryHex(mix.targetHex);
+      return {
+        mix,
+        recipe: computeRecipe(colors, mix.targetHex, { maxColors: 3 }),
+        complementHex,
+        complementRecipe: computeRecipe(colors, complementHex, {
+          maxColors: 3,
+        }),
+      };
+    });
+  }, [colors, collection]);
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-neutral-900">
-          {autumnCollection.title}
+        <Link
+          href="/recipes"
+          className="text-sm font-medium text-neutral-500 hover:text-neutral-800"
+        >
+          &larr; All collections
+        </Link>
+        <h1 className="mt-2 text-2xl font-semibold text-neutral-900">
+          {collection.title}
         </h1>
-        <p className="mt-1 text-sm text-neutral-600">{autumnCollection.intro}</p>
+        <p className="mt-1 text-sm text-neutral-600">{collection.intro}</p>
       </div>
 
       {loaded && colors.length === 0 ? (
@@ -41,7 +59,7 @@ export default function AutumnMixesPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-8">
-          {recipes.map(({ mix, recipe }) => (
+          {recipes.map(({ mix, recipe, complementHex, complementRecipe }) => (
             <div key={mix.name}>
               <div className="mb-2">
                 <h2 className="text-lg font-semibold text-neutral-900">
@@ -56,6 +74,19 @@ export default function AutumnMixesPage() {
                   No recipe could be solved from your current library.
                 </p>
               )}
+
+              <div className="mt-3 pl-4">
+                <p className="mb-2 text-xs font-medium tracking-wide text-neutral-500 uppercase">
+                  Complementary accent
+                </p>
+                {complementRecipe ? (
+                  <RecipeResult recipe={complementRecipe} targetHex={complementHex} />
+                ) : (
+                  <p className="text-sm text-neutral-500">
+                    No recipe could be solved from your current library.
+                  </p>
+                )}
+              </div>
             </div>
           ))}
         </div>

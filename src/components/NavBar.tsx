@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/", label: "Mixer" },
   { href: "/library", label: "Library" },
-  { href: "/autumn", label: "Autumn Mixes" },
+  { href: "/recipes", label: "Recipes" },
 ];
 
 export function NavBar() {
@@ -22,7 +22,8 @@ export function NavBar() {
               key={link.href}
               href={link.href}
               className={`text-sm font-medium ${
-                pathname === link.href
+                pathname === link.href ||
+                (link.href !== "/" && pathname.startsWith(`${link.href}/`))
                   ? "text-neutral-900"
                   : "text-neutral-500 hover:text-neutral-800"
               }`}
