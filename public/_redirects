@@ -1,0 +1,5 @@
+# Cloudflare static-assets rules (see wrangler.jsonc).
+/       /mix/  302
+# Shareable mixer links (/mix/<hex>?brands=A,B) all render the single /mix page,
+# which reads the target from the URL client-side.
+/mix/*  /mix/  200
