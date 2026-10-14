@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useLibrary } from "@/context/LibraryContext";
 import { ColorSwatch } from "@/components/ColorSwatch";
 import { HexColorField } from "@/components/HexColorField";
+import { ShopLinks } from "@/components/ShopLinks";
 import { ClayColor } from "@/lib/types";
 import { isValidHex, normalizeHex } from "@/lib/color";
 import { premoColors, PREMO_BRAND } from "@/lib/premoColors";
@@ -137,6 +138,7 @@ function LibraryRow({ clay }: { clay: ClayColor }) {
       <div className="flex-1">
         <p className="text-sm font-medium text-neutral-900">{clay.name}</p>
         <p className="text-xs font-mono text-neutral-500">{clay.hex}</p>
+        <ShopLinks clay={clay} />
       </div>
     </li>
   );

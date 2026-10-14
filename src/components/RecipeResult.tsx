@@ -1,5 +1,6 @@
 import { Recipe } from "@/lib/types";
 import { ColorSwatch } from "./ColorSwatch";
+import { ShopLinks } from "./ShopLinks";
 
 interface RecipeResultProps {
   recipe: Recipe;
@@ -50,6 +51,7 @@ export function RecipeResult({ recipe, targetHex }: RecipeResultProps) {
                 {ing.clay.name}
               </p>
               <p className="text-xs text-neutral-500">{ing.clay.brand}</p>
+              <ShopLinks clay={ing.clay} />
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-neutral-900">
