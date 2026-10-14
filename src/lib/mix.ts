@@ -159,62 +159,90 @@ export interface RecipeOptions {
   candidatePoolSize?: number;
 }
 
-export function computeRecipe(
+interface PoolEntry {
+  clay: ClayColor;
+  rgb: RGB;
+}
+
+interface ComboResult {
+  indices: number[];
+  weights: number[];
+  score: number;
+}
+
+/** Below this weight a clay is dropped from the recipe entirely. */
+const MIN_WEIGHT = 0.005;
+
+/**
+ * Combos larger than this only draw from the closest few candidates; the
+ * combination count otherwise explodes (C(20, 6) alone is ~39k solves).
+ */
+const LARGE_COMBO_SIZE = 4;
+const LARGE_COMBO_POOL_SIZE = 12;
+
+/**
+ * How many of the closest unrounded combos per color count get rounded to
+ * whole parts. Many combos solve to an exact match, so the unrounded score
+ * alone can't separate them; the rounded recipe is what the user mixes.
+ */
+const ROUNDING_CANDIDATES = 30;
+
+/** A recipe with more colors must beat the simpler one by at least this ΔE to be worth mixing. */
+const MIN_DELTA_E_IMPROVEMENT = 0.5;
+
+/**
+ * Narrows the library to the colors closest to the target so combinatorics
+ * stay fast on large libraries.
+ */
+function candidatePool(
   library: ClayColor[],
-  targetHex: string,
-  options: RecipeOptions = {}
-): Recipe | null {
-  const { maxColors = 3, candidatePoolSize = 20 } = options;
-  if (library.length === 0) return null;
-
-  const target = hexToRgb(targetHex);
-  const targetLab = rgbToLab(target);
-
-  // Narrow to the closest candidates first so combinatorics stay fast on large libraries.
+  target: RGB,
+  candidatePoolSize: number
+): PoolEntry[] {
   const withRgb = library.map((clay) => ({ clay, rgb: hexToRgb(clay.hex) }));
-  const pool =
-    withRgb.length > candidatePoolSize
-      ? [...withRgb]
-          .sort((a, b) => {
-            const da =
-              (a.rgb.r - target.r) ** 2 +
-              (a.rgb.g - target.g) ** 2 +
-              (a.rgb.b - target.b) ** 2;
-            const db =
-              (b.rgb.r - target.r) ** 2 +
-              (b.rgb.g - target.g) ** 2 +
-              (b.rgb.b - target.b) ** 2;
-            return da - db;
-          })
-          .slice(0, candidatePoolSize)
-      : withRgb;
+  const distance = ({ rgb }: PoolEntry) =>
+    (rgb.r - target.r) ** 2 + (rgb.g - target.g) ** 2 + (rgb.b - target.b) ** 2;
+  return [...withRgb]
+    .sort((a, b) => distance(a) - distance(b))
+    .slice(0, candidatePoolSize);
+}
 
+/**
+ * Calls `visit` with the solved weights for every combination of up to
+ * `maxColors` pool colors. Expects `pool` sorted closest-first.
+ */
+function forEachCombo(
+  pool: PoolEntry[],
+  target: RGB,
+  targetLab: Lab,
+  maxColors: number,
+  visit: (combo: ComboResult, size: number) => void
+) {
   const cap = Math.min(maxColors, pool.length);
-  let best: { indices: number[]; weights: number[]; score: number } | null =
-    null;
-
   for (let size = 1; size <= cap; size++) {
+    const poolSize =
+      size > LARGE_COMBO_SIZE ? LARGE_COMBO_POOL_SIZE : pool.length;
     for (const combo of combinations(
-      pool.map((_, i) => i),
+      pool.slice(0, poolSize).map((_, i) => i),
       size
     )) {
       const comboRgb = combo.map((i) => pool[i].rgb);
       const weights = solveWeights(comboRgb, target);
       const predicted = mixRgb(comboRgb, weights);
       const error = deltaE(rgbToLab(predicted), targetLab);
-      const score = error + (size - 1) * 0.05;
-
-      if (!best || score < best.score) {
-        best = { indices: combo, weights, score };
-      }
+      visit({ indices: combo, weights, score: error + (size - 1) * 0.05 }, size);
     }
   }
+}
 
-  if (!best) return null;
-
+function buildRecipe(
+  pool: PoolEntry[],
+  best: ComboResult,
+  targetLab: Lab
+): Recipe {
   const chosen = best.indices
-    .map((poolIdx, i) => ({ clay: pool[poolIdx].clay, weight: best!.weights[i] }))
-    .filter((c) => c.weight > 0.005)
+    .map((poolIdx, i) => ({ clay: pool[poolIdx].clay, weight: best.weights[i] }))
+    .filter((c) => c.weight > MIN_WEIGHT)
     .sort((a, b) => b.weight - a.weight);
 
   const weightSum = chosen.reduce((a, c) => a + c.weight, 0);
@@ -245,4 +273,90 @@ export function computeRecipe(
   const ratioLabel = parts.join(" : ");
 
   return { ingredients, ratioLabel, predictedHex, deltaE: finalDeltaE };
+}
+
+export function computeRecipe(
+  library: ClayColor[],
+  targetHex: string,
+  options: RecipeOptions = {}
+): Recipe | null {
+  const { maxColors = 3, candidatePoolSize = 20 } = options;
+  if (library.length === 0) return null;
+
+  const target = hexToRgb(targetHex);
+  const targetLab = rgbToLab(target);
+  const pool = candidatePool(library, target, candidatePoolSize);
+
+  let best: ComboResult | null = null;
+  forEachCombo(pool, target, targetLab, maxColors, (combo) => {
+    if (!best || combo.score < best.score) best = combo;
+  });
+
+  return best ? buildRecipe(pool, best, targetLab) : null;
+}
+
+/**
+ * Finds the best recipe for each ingredient count from 1 to `maxColors`, so
+ * simpler mixes can be weighed against closer but fussier ones. A count is
+ * left out when no combo of that size uses every color, or when its rounded
+ * recipe isn't a noticeable improvement on the simpler ones.
+ */
+export function computeRecipesByColorCount(
+  library: ClayColor[],
+  targetHex: string,
+  options: RecipeOptions = {}
+): Recipe[] {
+  const { maxColors = 6, candidatePoolSize = 20 } = options;
+  if (library.length === 0) return [];
+
+  const target = hexToRgb(targetHex);
+  const targetLab = rgbToLab(target);
+  const pool = candidatePool(library, target, candidatePoolSize);
+
+  // Combos where the solver zeroed out a color are skipped: the smaller combo
+  // without it is enumerated on its own.
+  const candidatesByCount = new Map<number, ComboResult[]>();
+  forEachCombo(pool, target, targetLab, maxColors, (combo, size) => {
+    const used = combo.weights.filter((w) => w > MIN_WEIGHT).length;
+    if (used !== size) return;
+    const candidates = candidatesByCount.get(size) ?? [];
+    candidates.push(combo);
+    if (candidates.length > ROUNDING_CANDIDATES * 4) {
+      candidates.sort((a, b) => a.score - b.score);
+      candidates.length = ROUNDING_CANDIDATES;
+    }
+    candidatesByCount.set(size, candidates);
+  });
+
+  const recipes: Recipe[] = [];
+  const counts = [...candidatesByCount.keys()].sort((a, b) => a - b);
+  for (const count of counts) {
+    const recipe = candidatesByCount
+      .get(count)!
+      .sort((a, b) => a.score - b.score)
+      .slice(0, ROUNDING_CANDIDATES)
+      .map((combo) => buildRecipe(pool, combo, targetLab))
+      .reduce((best, r) => (isBetterRecipe(r, best) ? r : best));
+    const previous = recipes[recipes.length - 1];
+    if (
+      !previous ||
+      previous.deltaE - recipe.deltaE >= MIN_DELTA_E_IMPROVEMENT
+    ) {
+      recipes.push(recipe);
+    }
+  }
+  return recipes;
+}
+
+function totalParts(recipe: Recipe): number {
+  return recipe.ingredients.reduce((sum, ing) => sum + ing.parts, 0);
+}
+
+/** Closer match wins; near-ties (imperceptible ΔE gap) go to the simpler ratio. */
+function isBetterRecipe(candidate: Recipe, current: Recipe): boolean {
+  if (Math.abs(candidate.deltaE - current.deltaE) < 0.1) {
+    const partsDiff = totalParts(candidate) - totalParts(current);
+    if (partsDiff !== 0) return partsDiff < 0;
+  }
+  return candidate.deltaE < current.deltaE;
 }
