@@ -2,19 +2,25 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+Tooling is managed with [mise](https://mise.jdx.dev), which pins the Node version and wraps the npm scripts:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+mise install      # install the pinned Node version
+mise run dev      # install deps if needed, then start the dev server
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000/mix](http://localhost:3000/mix) with your browser to see the result.
+
+Other tasks (`mise tasks` lists them all):
+
+```bash
+mise run lint     # ESLint
+mise run build    # static export into ./out
+mise run preview  # build and serve through Wrangler, like production
+mise run deploy   # deploy to clay.batesjernigan.com
+```
+
+Set `NEXT_PUBLIC_AMAZON_TAG=yourtag-20` before `build` or `deploy` to turn the Amazon buy links into affiliate links.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

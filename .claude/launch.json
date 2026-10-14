@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "clay-mixer",
-      "runtimeExecutable": "npm",
+      "runtimeExecutable": "mise",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
     }

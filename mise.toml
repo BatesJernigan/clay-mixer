@@ -1,0 +1,33 @@
+[tools]
+node = "26"
+
+[tasks.install]
+description = "Install npm dependencies"
+run = "npm install"
+sources = ["package.json", "package-lock.json"]
+outputs = ["node_modules/.package-lock.json"]
+
+[tasks.dev]
+description = "Start the Next.js dev server on http://localhost:3000/mix"
+depends = ["install"]
+run = "npm run dev"
+
+[tasks.lint]
+description = "Run ESLint"
+depends = ["install"]
+run = "npm run lint"
+
+[tasks.build]
+description = "Build the static export into ./out"
+depends = ["install"]
+run = "npm run build"
+
+[tasks.preview]
+description = "Build and serve the static site locally through Wrangler"
+depends = ["install"]
+run = "npm run cf:preview"
+
+[tasks.deploy]
+description = "Build and deploy to clay.batesjernigan.com (set NEXT_PUBLIC_AMAZON_TAG for affiliate links)"
+depends = ["install"]
+run = "npm run deploy"
