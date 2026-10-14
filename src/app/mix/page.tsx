@@ -89,9 +89,13 @@ export default function MixerPage() {
 
   const recipes = useMemo(
     () =>
+      // Closest match first; on a tie, the recipe with fewer colors wins.
       computeRecipesByColorCount(availableColors, targetHex, {
         maxColors: MAX_RECIPE_COLORS,
-      }),
+      }).sort(
+        (a, b) =>
+          a.deltaE - b.deltaE || a.ingredients.length - b.ingredients.length
+      ),
     [availableColors, targetHex]
   );
   const closestDeltaE = Math.min(...recipes.map((r) => r.deltaE));
