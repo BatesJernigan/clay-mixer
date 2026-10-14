@@ -13,22 +13,22 @@ export function RecipeCollectionView({
 }: {
   collection: PresetCollection;
 }) {
-  const { colors, loaded } = useLibrary();
+  const { colors, inStockColors, loaded } = useLibrary();
 
   const recipes = useMemo(() => {
-    if (colors.length === 0) return [];
+    if (inStockColors.length === 0) return [];
     return collection.mixes.map((mix) => {
       const complementHex = complementaryHex(mix.targetHex);
       return {
         mix,
-        recipe: computeRecipe(colors, mix.targetHex, { maxColors: 3 }),
+        recipe: computeRecipe(inStockColors, mix.targetHex, { maxColors: 3 }),
         complementHex,
-        complementRecipe: computeRecipe(colors, complementHex, {
+        complementRecipe: computeRecipe(inStockColors, complementHex, {
           maxColors: 3,
         }),
       };
     });
-  }, [colors, collection]);
+  }, [inStockColors, collection]);
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">

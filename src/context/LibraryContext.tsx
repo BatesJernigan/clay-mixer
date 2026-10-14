@@ -5,15 +5,30 @@ import {
   ReactNode,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { ClayColor } from "@/lib/types";
 import { seedLibrary } from "@/lib/seedLibrary";
 
 const STORAGE_KEY = "clay-mixer:library";
+const OUT_OF_STOCK_KEY = "clay-mixer:out-of-stock";
+
+/**
+ * Identifies a clay by brand + name rather than id: seeded ids are
+ * regenerated whenever the starter library is reloaded.
+ */
+export function clayKey(clay: Pick<ClayColor, "brand" | "name">): string {
+  return `${clay.brand.toLowerCase()}::${clay.name.toLowerCase()}`;
+}
 
 interface LibraryContextValue {
   colors: ClayColor[];
+  /** `colors` minus the ones marked out of stock — what recipes mix from. */
+  inStockColors: ClayColor[];
+  outOfStock: ReadonlySet<string>;
+  toggleOutOfStock: (clay: ClayColor) => void;
+  clearOutOfStock: () => void;
   loaded: boolean;
   addColor: (color: Omit<ClayColor, "id" | "createdAt">) => void;
   resetToSeed: () => void;
@@ -22,10 +37,10 @@ interface LibraryContextValue {
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
 
-function readStorage(): ClayColor[] | null {
+function readStorage(key: string): unknown[] | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
@@ -37,14 +52,16 @@ function readStorage(): ClayColor[] | null {
 
 export function LibraryProvider({ children }: { children: ReactNode }) {
   const [colors, setColors] = useState<ClayColor[]>([]);
+  const [outOfStock, setOutOfStock] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     // localStorage isn't available during SSR, so the real library can only be
     // read client-side after mount; a render-time read would mismatch hydration.
-    const stored = readStorage();
+    const stored = readStorage(STORAGE_KEY) as ClayColor[] | null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setColors(stored ?? seedLibrary());
+    setOutOfStock(new Set((readStorage(OUT_OF_STOCK_KEY) as string[]) ?? []));
     setLoaded(true);
   }, []);
 
@@ -52,6 +69,27 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     if (!loaded) return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(colors));
   }, [colors, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    window.localStorage.setItem(OUT_OF_STOCK_KEY, JSON.stringify([...outOfStock]));
+  }, [outOfStock, loaded]);
+
+  const inStockColors = useMemo(
+    () => colors.filter((c) => !outOfStock.has(clayKey(c))),
+    [colors, outOfStock]
+  );
+
+  const toggleOutOfStock = (clay: ClayColor) => {
+    setOutOfStock((prev) => {
+      const next = new Set(prev);
+      const key = clayKey(clay);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  };
+
+  const clearOutOfStock = () => setOutOfStock(new Set());
 
   const addColor: LibraryContextValue["addColor"] = (color) => {
     setColors((prev) => [
@@ -63,12 +101,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const resetToSeed = () => setColors(seedLibrary());
 
   const importColors: LibraryContextValue["importColors"] = (newColors) => {
-    const existingKeys = new Set(
-      colors.map((c) => `${c.brand.toLowerCase()}::${c.name.toLowerCase()}`)
-    );
-    const toAdd = newColors.filter(
-      (c) => !existingKeys.has(`${c.brand.toLowerCase()}::${c.name.toLowerCase()}`)
-    );
+    const existingKeys = new Set(colors.map(clayKey));
+    const toAdd = newColors.filter((c) => !existingKeys.has(clayKey(c)));
     if (toAdd.length > 0) {
       const now = Date.now();
       setColors((prev) => [
@@ -83,6 +117,10 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     <LibraryContext.Provider
       value={{
         colors,
+        inStockColors,
+        outOfStock,
+        toggleOutOfStock,
+        clearOutOfStock,
         loaded,
         addColor,
         resetToSeed,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLibrary } from "@/context/LibraryContext";
 import { HexColorField } from "@/components/HexColorField";
 import { RecipeResult } from "@/components/RecipeResult";
+import { ColorsUsedBar } from "@/components/ColorsUsedBar";
 import { computeRecipesByColorCount } from "@/lib/mix";
 import { isValidHex, normalizeHex } from "@/lib/color";
 import Link from "next/link";
@@ -42,7 +43,7 @@ function buildMixPath({ targetHex, brands }: MixUrlState): string {
 }
 
 export default function MixerPage() {
-  const { colors, loaded } = useLibrary();
+  const { colors, inStockColors, loaded } = useLibrary();
   const [targetHex, setTargetHex] = useState(DEFAULT_HEX);
   // null = every brand in the library; otherwise only these brands are used.
   const [selectedBrands, setSelectedBrands] = useState<string[] | null>(null);
@@ -82,9 +83,9 @@ export default function MixerPage() {
   const availableColors = useMemo(
     () =>
       selectedBrands
-        ? colors.filter((c) => selectedBrands.includes(c.brand))
-        : colors,
-    [colors, selectedBrands]
+        ? inStockColors.filter((c) => selectedBrands.includes(c.brand))
+        : inStockColors,
+    [inStockColors, selectedBrands]
   );
 
   const recipes = useMemo(
@@ -214,6 +215,8 @@ export default function MixerPage() {
             )}
           </div>
 
+          <ColorsUsedBar recipes={recipes} />
+
           {recipes.length > 0 ? (
             recipes.map((recipe) => (
               <section key={recipe.ingredients.length}>
@@ -232,7 +235,8 @@ export default function MixerPage() {
           ) : (
             loaded && (
               <p className="rounded-lg border border-dashed border-neutral-300 bg-white p-6 text-center text-sm text-neutral-600">
-                Select at least one brand to get a recipe.
+                No colors to mix from. Select a brand or restore an
+                out-of-stock color.
               </p>
             )
           )}
