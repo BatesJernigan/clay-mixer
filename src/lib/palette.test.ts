@@ -46,6 +46,16 @@ describe("analyzeImage", () => {
     ]);
   });
 
+  it("absorbs isolated pixels of an in-between color", () => {
+    // Every third pixel on every third row is MID: 11% of the image, but
+    // never two MID pixels side by side, like stipple or anti-aliasing.
+    const img = grid(90, 90, (x, y) =>
+      x % 3 === 1 && y % 3 === 1 ? MID : y < 45 ? CORAL : MAROON
+    );
+    const colors = extractPalette(analyzeImage(img), { minShare: 0.03 });
+    expect(colors.map((c) => c.hex).sort()).toEqual(["#5a0f12", "#e8394f"]);
+  });
+
   it("places the dot inside the largest patch, in original-image coordinates", () => {
     // 400px wide, so the analysis runs on a 200px copy and must scale back up.
     const img = grid(400, 400, (x, y) =>

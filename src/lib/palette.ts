@@ -29,6 +29,11 @@ export const INITIAL_CLUSTERS = 16;
 export const KMEANS_MAX_ITERATIONS = 12;
 /** Clusters whose centers are closer than this (ΔE) are one color. */
 export const MERGE_DELTA_E = 10;
+/**
+ * Passes of the 3×3 majority filter. Each pass hands scattered pixels
+ * (stipple, anti-aliased edges, JPEG noise) to the color around them.
+ */
+export const MAJORITY_PASSES = 2;
 export const MAX_SCANNED_COLORS = 10;
 
 const MIN_ALPHA = 128;
@@ -47,7 +52,7 @@ interface Sample {
 
 interface Cluster {
   lab: Lab;
-  /** Pixels assigned to the cluster; 0 once it has been merged away. */
+  /** Pixels assigned to the cluster; 0 once it has been merged or filtered away. */
   count: number;
 }
 
@@ -77,6 +82,11 @@ export function analyzeImage(pixels: PixelGrid): ImageAnalysis {
   for (const c of assignment) clusters[c].count++;
 
   mergeNearDuplicates(clusters, labels);
+  for (let pass = 0; pass < MAJORITY_PASSES; pass++) {
+    majorityFilter(labels, sample.width, sample.height);
+  }
+  for (const cluster of clusters) cluster.count = 0;
+  for (const c of labels) if (c >= 0) clusters[c].count++;
 
   const colors = locateColors(clusters, labels, sample, pixels).sort(
     (a, b) => b.share - a.share || a.hex.localeCompare(b.hex)
@@ -261,6 +271,38 @@ function mergeNearDuplicates(clusters: Cluster[], labels: Int32Array) {
     a.count = n;
     b.count = 0;
     relabel(labels, bestJ, bestI);
+  }
+}
+
+/**
+ * Gives each pixel the most common label in its 3×3 neighborhood, keeping its
+ * own on a tie. Solid regions are untouched; isolated pixels of an in-between
+ * color are absorbed into whatever surrounds them.
+ */
+function majorityFilter(labels: Int32Array, width: number, height: number) {
+  const source = labels.slice();
+  const counts = new Map<number, number>();
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const own = source[y * width + x];
+      if (own < 0) continue;
+      counts.clear();
+      for (let ny = Math.max(0, y - 1); ny <= Math.min(height - 1, y + 1); ny++) {
+        for (let nx = Math.max(0, x - 1); nx <= Math.min(width - 1, x + 1); nx++) {
+          const c = source[ny * width + nx];
+          if (c >= 0) counts.set(c, (counts.get(c) ?? 0) + 1);
+        }
+      }
+      let best = own;
+      let bestCount = counts.get(own)!;
+      for (const [c, n] of counts) {
+        if (n > bestCount) {
+          best = c;
+          bestCount = n;
+        }
+      }
+      labels[y * width + x] = best;
+    }
   }
 }
 
