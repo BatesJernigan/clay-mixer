@@ -16,6 +16,7 @@ import {
   ImageLoadError,
   ImageLoadErrorKind,
   imageFromClipboard,
+  imageFromFiles,
   loadImagePixels,
   parseImageUrl,
 } from "@/lib/imageSource";
@@ -34,14 +35,14 @@ import {
 
 interface LoadedImage {
   pixels: PixelGrid;
-  /** The image's URL, or null for a pasted image, which can't go in a share link. */
+  /** The image's URL, or null for a pasted or uploaded file, which can't go in a share link. */
   sourceUrl: string | null;
 }
 
 type Status =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "error"; error: ImageLoadErrorKind; pasted: boolean };
+  | { kind: "error"; error: ImageLoadErrorKind; fromFile: boolean };
 
 /** Marker state restored from a share link. */
 interface SavedMarkers {
@@ -52,11 +53,11 @@ interface SavedMarkers {
 
 const MAX_RECIPE_COLORS = 6;
 
-function errorMessage(error: ImageLoadErrorKind, pasted: boolean): string {
+function errorMessage(error: ImageLoadErrorKind, fromFile: boolean): string {
   if (error === "blocked") {
     return "This site doesn't allow its images to be read. Right-click the image → Copy Image, then paste it here.";
   }
-  return pasted ? "Couldn't read the pasted image." : "Couldn't load an image from that link.";
+  return fromFile ? "Couldn't read that image." : "Couldn't load an image from that link.";
 }
 
 export default function PalettePage() {
@@ -71,14 +72,15 @@ export default function PalettePage() {
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
   const loadId = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (source: string | Blob, saved?: SavedMarkers) => {
     const id = ++loadId.current;
-    const pasted = typeof source !== "string";
+    const fromFile = typeof source !== "string";
     setStatus({ kind: "loading" });
     try {
       const pixels = await loadImagePixels(source);
-      // A newer scan or paste started while this one loaded; let it win.
+      // A newer scan, paste or upload started while this one loaded; let it win.
       if (id !== loadId.current) return;
       setImage({
         pixels,
@@ -94,7 +96,7 @@ export default function PalettePage() {
       setStatus({
         kind: "error",
         error: err instanceof ImageLoadError ? err.kind : "load-failed",
-        pasted,
+        fromFile,
       });
     }
   }, []);
@@ -113,17 +115,47 @@ export default function PalettePage() {
     });
   }, [load]);
 
+  /** Loads a pasted, dropped or uploaded file; null means the user gave no image. */
+  const loadFile = useCallback(
+    (file: File | null) => {
+      if (!file) {
+        loadId.current++; // cancel any load in flight, as a new one would
+        setStatus({ kind: "error", error: "load-failed", fromFile: true });
+        return;
+      }
+      setUrlInput("");
+      load(file);
+    },
+    [load]
+  );
+
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const file = imageFromClipboard(e.clipboardData);
       if (!file) return; // text pastes, like into the URL field, behave normally
       e.preventDefault();
-      setUrlInput("");
-      load(file);
+      loadFile(file);
+    };
+    const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
+    // Without this, dropping a file anywhere makes the browser open it in
+    // place of the page. Text drags, like into the URL field, are untouched.
+    const onDragOver = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      loadFile(imageFromFiles(e.dataTransfer!.files));
     };
     window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [load]);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("paste", onPaste);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [loadFile]);
 
   // Analysis runs once per image; the slider only re-filters its result.
   const analysis = useMemo(() => (image ? analyzeImage(image.pixels) : null), [image]);
@@ -226,6 +258,26 @@ export default function PalettePage() {
           >
             {status.kind === "loading" ? "Scanning…" : "Scan"}
           </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+          >
+            Upload image
+          </button>
+          {/* Read in the browser: the file never leaves the device. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const files = e.target.files;
+              if (!files?.length) return; // picker dismissed
+              loadFile(imageFromFiles(files));
+              e.target.value = ""; // so choosing the same file again still loads it
+            }}
+          />
         </form>
         <p
           className={`text-xs ${
@@ -234,11 +286,11 @@ export default function PalettePage() {
               : "text-neutral-500"
           }`}
         >
-          …or paste an image anywhere on this page.
+          …or paste or drop an image anywhere on this page.
         </p>
         {status.kind === "error" && (
           <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            {errorMessage(status.error, status.pasted)}
+            {errorMessage(status.error, status.fromFile)}
           </p>
         )}
       </div>

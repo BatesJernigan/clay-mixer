@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitWithin, imageFromClipboard, parseImageUrl } from "./imageSource";
+import { fitWithin, imageFromClipboard, imageFromFiles, parseImageUrl } from "./imageSource";
 
 describe("parseImageUrl", () => {
   it("accepts http(s) URLs and trims whitespace", () => {
@@ -65,5 +65,23 @@ describe("imageFromClipboard", () => {
     expect(
       imageFromClipboard({ items: [item("file", "application/pdf", pdf)] })
     ).toBeNull();
+  });
+});
+
+describe("imageFromFiles", () => {
+  const file = (name: string, type: string) => new File([new Uint8Array([1])], name, { type });
+
+  it("returns null when nothing was chosen or dropped", () => {
+    expect(imageFromFiles(null)).toBeNull();
+    expect(imageFromFiles([])).toBeNull();
+  });
+
+  it("returns the first image, skipping other files", () => {
+    const jpg = file("cover.jpg", "image/jpeg");
+    expect(imageFromFiles([file("notes.txt", "text/plain"), jpg, file("b.png", "image/png")])).toBe(jpg);
+  });
+
+  it("returns null when no file is an image", () => {
+    expect(imageFromFiles([file("doc.pdf", "application/pdf")])).toBeNull();
   });
 });

@@ -58,6 +58,12 @@ export function imageFromClipboard(
   return null;
 }
 
+/** The first image among files from a file picker or a drop, or null if there is none. */
+export function imageFromFiles(files: ArrayLike<File> | null): File | null {
+  if (!files) return null;
+  return Array.from(files).find((file) => file.type.startsWith("image/")) ?? null;
+}
+
 function decode(src: string, crossOrigin: boolean): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
