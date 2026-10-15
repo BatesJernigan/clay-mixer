@@ -12,10 +12,43 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * Dark mode. Components are styled with a light palette (bg-white cards,
+ * text-neutral-900, bg-neutral-900 + text-white buttons), so rather than
+ * adding dark: variants everywhere, the palette itself flips: the neutral
+ * scale runs dark-to-light, white becomes the card surface, and the match
+ * badge colors (bg-*-50 / text-*-700) swap to their dark counterparts.
+ * Unlayered, so these win over Tailwind's @layer theme defaults.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --color-white: oklch(18% 0 0);
+    --color-black: oklch(100% 0 0);
+
+    --color-neutral-50: oklch(14.5% 0 0);
+    --color-neutral-100: oklch(23% 0 0);
+    --color-neutral-200: oklch(26.9% 0 0);
+    --color-neutral-300: oklch(37.1% 0 0);
+    --color-neutral-400: oklch(55.6% 0 0);
+    --color-neutral-500: oklch(70.8% 0 0);
+    --color-neutral-600: oklch(78% 0 0);
+    --color-neutral-700: oklch(87% 0 0);
+    --color-neutral-800: oklch(92.2% 0 0);
+    --color-neutral-900: oklch(97% 0 0);
+    --color-neutral-950: oklch(98.5% 0 0);
+
+    --color-green-50: oklch(26.6% 0.065 152.934);
+    --color-green-700: oklch(87.1% 0.15 154.449);
+    --color-lime-50: oklch(27.4% 0.072 132.109);
+    --color-lime-700: oklch(89.7% 0.196 126.665);
+    --color-amber-50: oklch(27.9% 0.077 45.635);
+    --color-amber-700: oklch(87.9% 0.169 91.605);
+    --color-red-50: oklch(25.8% 0.092 26.042);
+    --color-red-700: oklch(80.8% 0.114 19.571);
   }
 }
 
