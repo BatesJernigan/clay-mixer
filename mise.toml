@@ -17,6 +17,11 @@ description = "Run ESLint"
 depends = ["install"]
 run = "npm run lint"
 
+[tasks.test]
+description = "Run unit tests"
+depends = ["install"]
+run = "npm test"
+
 [tasks.build]
 description = "Build the static export into ./out"
 depends = ["install"]

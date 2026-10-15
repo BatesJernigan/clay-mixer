@@ -21,7 +21,9 @@ in-between pixels that must **not** surface as palette colors.
 In v1:
 
 - New `/palette` page with a nav entry.
-- Load an image from a URL, or from an image pasted anywhere on the page.
+- Load an image from a URL, from an image pasted anywhere on the page, or from
+  a file chosen with an **Upload image** button or dropped on the page (added
+  after v1 review; read in the browser, never uploaded to a server).
 - Automatic scan for predominant colors, controlled by a minimum-share slider.
 - Lettered markers on the image, plus a marker list with collapsible recipes.
 - Click anywhere on the image to add a marker; remove any marker.
@@ -30,8 +32,6 @@ In v1:
 
 Out of v1 (but the code must not preclude it):
 
-- A file-upload control. The image loader takes `string | Blob` from day one,
-  so an uploader is a UI-only addition later.
 - Dragging markers to re-sample.
 - A server-side image proxy for sites that block cross-origin pixel reads.
 
@@ -122,8 +122,8 @@ hidden scanned hexes, hover highlight. Reads/writes the share URL. Adds a
 
 ## Page layout
 
-- Top: image URL field + **Scan** button, with the hint "or paste an image
-  anywhere on this page".
+- Top: image URL field + **Scan** and **Upload image** buttons, with the hint
+  "…or paste or drop an image anywhere on this page".
 - Desktop: two columns — image (sticky) left, marker list right.
 - Mobile: stacked — image, then list.
 - "Minimum share: N%" slider above the list. Range 1–10%, step 1, default 3%.
