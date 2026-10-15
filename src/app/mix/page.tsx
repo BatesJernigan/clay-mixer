@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useLibrary } from "@/context/LibraryContext";
 import { HexColorField } from "@/components/HexColorField";
 import { RecipeResult } from "@/components/RecipeResult";
@@ -88,16 +88,19 @@ export default function MixerPage() {
     [inStockColors, selectedBrands]
   );
 
+  // The search takes tens of milliseconds, so recipes trail the color picker
+  // while dragging instead of making it stutter.
+  const recipeHex = useDeferredValue(targetHex);
   const recipes = useMemo(
     () =>
       // Closest match first; on a tie, the recipe with fewer colors wins.
-      computeRecipesByColorCount(availableColors, targetHex, {
+      computeRecipesByColorCount(availableColors, recipeHex, {
         maxColors: MAX_RECIPE_COLORS,
       }).sort(
         (a, b) =>
           a.deltaE - b.deltaE || a.ingredients.length - b.ingredients.length
       ),
-    [availableColors, targetHex]
+    [availableColors, recipeHex]
   );
   const closestDeltaE = Math.min(...recipes.map((r) => r.deltaE));
 
@@ -229,7 +232,7 @@ export default function MixerPage() {
                     </span>
                   )}
                 </h2>
-                <RecipeResult recipe={recipe} targetHex={targetHex} />
+                <RecipeResult recipe={recipe} targetHex={recipeHex} />
               </section>
             ))
           ) : (

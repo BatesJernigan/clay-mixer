@@ -107,192 +107,284 @@ function gcdOfAll(nums: number[]): number {
   return nums.reduce((a, b) => gcd(a, b));
 }
 
-/**
- * Converts continuous mix weights into a small-integer part ratio (e.g. "1 : 5 : 10"),
- * trying coarser denominators first and only refining precision when the rounding
- * would otherwise visibly worsen the color match.
- */
-function weightsToParts(
-  weights: number[],
-  comboRgb: RGB[],
-  targetLab: Lab,
-  baseDeltaE: number
-): number[] {
-  if (weights.length === 1) return [1];
-
-  const minWeight = Math.min(...weights);
-  const denominators = [1, 2, 4, 10];
-  const tolerance = Math.max(baseDeltaE + 2, 6);
-
-  for (const denom of denominators) {
-    const raw = weights.map((w) => Math.max(1, Math.round((w / minWeight) * denom)));
-    const divisor = gcdOfAll(raw);
-    const parts = raw.map((x) => x / divisor);
-
-    const partsSum = parts.reduce((a, b) => a + b, 0);
-    const approxWeights = parts.map((p) => p / partsSum);
-    const predicted = mixRgb(comboRgb, approxWeights);
-    const error = deltaE(rgbToLab(predicted), targetLab);
-
-    if (error <= tolerance || denom === denominators[denominators.length - 1]) {
-      return parts;
-    }
-  }
-
-  return weights.map(() => 1);
-}
-
-function* combinations<T>(items: T[], size: number): Generator<T[]> {
-  if (size === 0) {
-    yield [];
-    return;
-  }
-  for (let i = 0; i <= items.length - size; i++) {
-    for (const rest of combinations(items.slice(i + 1), size - 1)) {
-      yield [items[i], ...rest];
-    }
-  }
-}
 
 export interface RecipeOptions {
   maxColors?: number;
-  candidatePoolSize?: number;
 }
 
-interface PoolEntry {
+interface Swatch {
   clay: ClayColor;
   rgb: RGB;
 }
 
-interface ComboResult {
+/** A set of library colors (indices into the swatch list) and its best unrounded mix. */
+interface Combo {
   indices: number[];
   weights: number[];
-  score: number;
+  error: number;
 }
 
 /** Below this weight a clay is dropped from the recipe entirely. */
 const MIN_WEIGHT = 0.005;
 
-/**
- * Combos larger than this only draw from the closest few candidates; the
- * combination count otherwise explodes (C(20, 6) alone is ~39k solves).
- */
-const LARGE_COMBO_SIZE = 4;
-const LARGE_COMBO_POOL_SIZE = 12;
+/** How many of the closest combos of each size are grown into the next size. */
+const BEAM_WIDTH = 20;
+
+/** How many of the closest combos of each size get swap-refined. */
+const SWAP_CANDIDATES = 6;
 
 /**
  * How many of the closest unrounded combos per color count get rounded to
- * whole parts. Many combos solve to an exact match, so the unrounded score
+ * whole parts. Many combos solve to an exact match, so the unrounded error
  * alone can't separate them; the rounded recipe is what the user mixes.
  */
-const ROUNDING_CANDIDATES = 30;
+const ROUNDING_CANDIDATES = 24;
+
+/** Recipes never call for more total parts than this. */
+const MAX_TOTAL_PARTS = 40;
+
+/** A ratio with more total parts has to be at least this much closer (ΔE) to be worth it. */
+const PARTS_TOLERANCE = 0.3;
 
 /** A recipe with more colors must beat the simpler one by at least this ΔE to be worth mixing. */
 const MIN_DELTA_E_IMPROVEMENT = 0.5;
 
-/**
- * Narrows the library to the colors closest to the target so combinatorics
- * stay fast on large libraries.
- */
-function candidatePool(
-  library: ClayColor[],
-  target: RGB,
-  candidatePoolSize: number
-): PoolEntry[] {
-  const withRgb = library.map((clay) => ({ clay, rgb: hexToRgb(clay.hex) }));
-  const distance = ({ rgb }: PoolEntry) =>
-    (rgb.r - target.r) ** 2 + (rgb.g - target.g) ** 2 + (rgb.b - target.b) ** 2;
-  return [...withRgb]
-    .sort((a, b) => distance(a) - distance(b))
-    .slice(0, candidatePoolSize);
+function mixError(rgbs: RGB[], weights: number[], targetLab: Lab): number {
+  return deltaE(rgbToLab(mixRgb(rgbs, weights)), targetLab);
 }
 
 /**
- * Calls `visit` with the solved weights for every combination of up to
- * `maxColors` pool colors. Expects `pool` sorted closest-first.
+ * Finds the closest-fitting combos of each size from 1 to `maxColors`, drawing
+ * on the whole library: a good mix often needs a color nowhere near the target
+ * (a white to lighten, a yellow to warm). Sizes 1 and 2 are checked
+ * exhaustively. Each larger size grows the best combos of the size below by
+ * every other color, then tries swapping members out, which finds mixes whose
+ * best smaller subset isn't itself a close match.
+ *
+ * Only combos that use every color are kept: one where the solver zeroed out a
+ * color is the smaller combo, already found at its own size.
  */
-function forEachCombo(
-  pool: PoolEntry[],
+function searchCombos(
+  swatches: Swatch[],
   target: RGB,
   targetLab: Lab,
-  maxColors: number,
-  visit: (combo: ComboResult, size: number) => void
-) {
-  const cap = Math.min(maxColors, pool.length);
-  for (let size = 1; size <= cap; size++) {
-    const poolSize =
-      size > LARGE_COMBO_SIZE ? LARGE_COMBO_POOL_SIZE : pool.length;
-    for (const combo of combinations(
-      pool.slice(0, poolSize).map((_, i) => i),
-      size
-    )) {
-      const comboRgb = combo.map((i) => pool[i].rgb);
-      const weights = solveWeights(comboRgb, target);
-      const predicted = mixRgb(comboRgb, weights);
-      const error = deltaE(rgbToLab(predicted), targetLab);
-      visit({ indices: combo, weights, score: error + (size - 1) * 0.05 }, size);
+  maxColors: number
+): Map<number, Combo[]> {
+  const n = swatches.length;
+  const seen = new Set<string>();
+  const bySize = new Map<number, Combo[]>();
+
+  const fit = (indices: number[]): Combo | null => {
+    const sorted = [...indices].sort((a, b) => a - b);
+    const key = sorted.join(",");
+    if (seen.has(key)) return null;
+    seen.add(key);
+    const rgbs = sorted.map((i) => swatches[i].rgb);
+    const weights = solveWeights(rgbs, target);
+    if (weights.some((w) => w <= MIN_WEIGHT)) return null;
+    return { indices: sorted, weights, error: mixError(rgbs, weights, targetLab) };
+  };
+
+  const byError = (a: Combo, b: Combo) => a.error - b.error;
+  const keep = (combos: (Combo | null)[]) =>
+    combos.filter((c): c is Combo => c !== null).sort(byError);
+
+  const singles = keep(swatches.map((_, i) => fit([i])));
+  bySize.set(1, singles);
+
+  const pairs: (Combo | null)[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) pairs.push(fit([i, j]));
+  }
+  bySize.set(2, keep(pairs));
+
+  for (let size = 3; size <= Math.min(maxColors, n); size++) {
+    const grown: (Combo | null)[] = [];
+    for (const seed of bySize.get(size - 1)!.slice(0, BEAM_WIDTH)) {
+      for (let j = 0; j < n; j++) {
+        if (!seed.indices.includes(j)) grown.push(fit([...seed.indices, j]));
+      }
     }
+    const combos = keep(grown);
+
+    // Hill-climb the closest few: swap one member for any other color while
+    // that gets closer.
+    for (let start of combos.slice(0, SWAP_CANDIDATES)) {
+      for (;;) {
+        let better: Combo | null = null;
+        for (let pos = 0; pos < size; pos++) {
+          for (let j = 0; j < n; j++) {
+            if (start.indices.includes(j)) continue;
+            const swapped = [...start.indices];
+            swapped[pos] = j;
+            const combo = fit(swapped);
+            if (!combo) continue;
+            combos.push(combo);
+            if (combo.error < (better ?? start).error) better = combo;
+          }
+        }
+        if (!better) break;
+        start = better;
+      }
+    }
+
+    if (combos.length === 0) break;
+    bySize.set(size, combos.sort(byError));
+  }
+  return bySize;
+}
+
+/**
+ * Nudges a combo's weights toward the closest match in ΔE. The solver fits in
+ * RGB, which can land well off the perceptual optimum when the target is out
+ * of reach. Shifts weight between pairs of colors, halving the step whenever
+ * no shift helps.
+ */
+function refineInLab(combo: Combo, swatches: Swatch[], targetLab: Lab): Combo {
+  const rgbs = combo.indices.map((i) => swatches[i].rgb);
+  let weights = combo.weights;
+  let error = combo.error;
+  for (let step = 0.05; step > 1e-3; ) {
+    let improved = false;
+    for (let from = 0; from < weights.length; from++) {
+      for (let to = 0; to < weights.length; to++) {
+        const shift = Math.min(step, weights[from] - MIN_WEIGHT);
+        if (to === from || shift <= 0) continue;
+        const next = [...weights];
+        next[from] -= shift;
+        next[to] += shift;
+        const nextError = mixError(rgbs, next, targetLab);
+        if (nextError < error - 1e-9) {
+          weights = next;
+          error = nextError;
+          improved = true;
+        }
+      }
+    }
+    if (!improved) step /= 2;
+  }
+  return { indices: combo.indices, weights, error };
+}
+
+/** Splits `total` parts in proportion to `weights`, giving every color at least one. */
+function apportion(weights: number[], total: number): number[] {
+  const ideal = weights.map((w) => w * total);
+  const parts = ideal.map((x) => Math.max(1, Math.floor(x)));
+  let sum = parts.reduce((a, p) => a + p, 0);
+  while (sum < total) {
+    const i = argMax(ideal.map((x, i) => x - parts[i]));
+    parts[i]++;
+    sum++;
+  }
+  while (sum > total) {
+    const i = argMax(ideal.map((x, i) => (parts[i] > 1 ? parts[i] - x : -Infinity)));
+    parts[i]--;
+    sum--;
+  }
+  return parts;
+}
+
+function argMax(values: number[]): number {
+  return values.indexOf(Math.max(...values));
+}
+
+/**
+ * Moves single parts between colors while that brings the mix closer. The
+ * unrounded weights are fit in RGB, so the nearest whole-part ratio isn't
+ * always the closest one in ΔE.
+ */
+function polishParts(parts: number[], rgbs: RGB[], targetLab: Lab) {
+  const total = parts.reduce((a, p) => a + p, 0);
+  const errorOf = (p: number[]) => mixError(rgbs, p.map((x) => x / total), targetLab);
+  let best = { parts, error: errorOf(parts) };
+  for (;;) {
+    let improved = false;
+    for (let from = 0; from < parts.length; from++) {
+      for (let to = 0; to < parts.length; to++) {
+        // Re-checked each move: an accepted move may have just taken from it.
+        if (to === from || best.parts[from] === 1) continue;
+        const next = [...best.parts];
+        next[from]--;
+        next[to]++;
+        const error = errorOf(next);
+        if (error < best.error - 1e-9) {
+          best = { parts: next, error };
+          improved = true;
+        }
+      }
+    }
+    if (!improved) return best;
   }
 }
 
-function buildRecipe(
-  pool: PoolEntry[],
-  best: ComboResult,
-  targetLab: Lab
-): Recipe {
-  const chosen = best.indices
-    .map((poolIdx, i) => ({ clay: pool[poolIdx].clay, weight: best.weights[i] }))
-    .filter((c) => c.weight > MIN_WEIGHT)
-    .sort((a, b) => b.weight - a.weight);
+/**
+ * Converts continuous mix weights into a whole-part ratio (e.g. "3 : 2 : 1"):
+ * the fewest total parts that come within `PARTS_TOLERANCE` of the unrounded
+ * mix, or failing that the closest ratio up to `MAX_TOTAL_PARTS`.
+ */
+function weightsToParts(
+  weights: number[],
+  rgbs: RGB[],
+  targetLab: Lab,
+  unroundedError: number
+): number[] {
+  if (weights.length === 1) return [1];
 
-  const weightSum = chosen.reduce((a, c) => a + c.weight, 0);
-  const normalizedWeights = chosen.map((c) =>
-    weightSum > 0 ? c.weight / weightSum : 0
-  );
-  const chosenRgb = chosen.map((c) => hexToRgb(c.clay.hex));
+  const options = [];
+  for (let total = weights.length; total <= MAX_TOTAL_PARTS; total++) {
+    const option = polishParts(apportion(weights, total), rgbs, targetLab);
+    options.push(option);
+    // Already as close as the unrounded mix: more parts won't help.
+    if (option.error <= unroundedError + 0.05) break;
+  }
+  const closest = Math.min(...options.map((o) => o.error));
+  const { parts } = options.find((o) => o.error <= closest + PARTS_TOLERANCE)!;
+  const divisor = gcdOfAll(parts);
+  return parts.map((p) => p / divisor);
+}
+
+function buildRecipe(swatches: Swatch[], combo: Combo, targetLab: Lab): Recipe {
+  const chosen = combo.indices
+    .map((idx, i) => ({ swatch: swatches[idx], weight: combo.weights[i] }))
+    .sort((a, b) => b.weight - a.weight);
+  const rgbs = chosen.map((c) => c.swatch.rgb);
   const parts = weightsToParts(
-    normalizedWeights,
-    chosenRgb,
+    chosen.map((c) => c.weight),
+    rgbs,
     targetLab,
-    best.score
+    combo.error
   );
   const partsSum = parts.reduce((a, b) => a + b, 0);
 
   const ingredients: RecipeIngredient[] = chosen.map((c, i) => ({
-    clay: c.clay,
+    clay: c.swatch.clay,
     parts: parts[i],
     percent: (parts[i] / partsSum) * 100,
   }));
 
   const finalRgb = mixRgb(
-    chosenRgb,
+    rgbs,
     parts.map((p) => p / partsSum)
   );
-  const predictedHex = rgbToHex(finalRgb);
-  const finalDeltaE = deltaE(rgbToLab(finalRgb), targetLab);
-  const ratioLabel = parts.join(" : ");
-
-  return { ingredients, ratioLabel, predictedHex, deltaE: finalDeltaE };
+  return {
+    ingredients,
+    ratioLabel: parts.join(" : "),
+    predictedHex: rgbToHex(finalRgb),
+    deltaE: deltaE(rgbToLab(finalRgb), targetLab),
+  };
 }
 
+/** The single closest recipe using up to `maxColors` colors (default 3). */
 export function computeRecipe(
   library: ClayColor[],
   targetHex: string,
   options: RecipeOptions = {}
 ): Recipe | null {
-  const { maxColors = 3, candidatePoolSize = 20 } = options;
-  if (library.length === 0) return null;
-
-  const target = hexToRgb(targetHex);
-  const targetLab = rgbToLab(target);
-  const pool = candidatePool(library, target, candidatePoolSize);
-
-  let best: ComboResult | null = null;
-  forEachCombo(pool, target, targetLab, maxColors, (combo) => {
-    if (!best || combo.score < best.score) best = combo;
+  const recipes = computeRecipesByColorCount(library, targetHex, {
+    maxColors: options.maxColors ?? 3,
   });
-
-  return best ? buildRecipe(pool, best, targetLab) : null;
+  // Each larger recipe is kept only if it's closer, so the last is the closest.
+  return recipes[recipes.length - 1] ?? null;
 }
 
 /**
@@ -306,36 +398,21 @@ export function computeRecipesByColorCount(
   targetHex: string,
   options: RecipeOptions = {}
 ): Recipe[] {
-  const { maxColors = 6, candidatePoolSize = 20 } = options;
+  const { maxColors = 6 } = options;
   if (library.length === 0) return [];
 
   const target = hexToRgb(targetHex);
   const targetLab = rgbToLab(target);
-  const pool = candidatePool(library, target, candidatePoolSize);
-
-  // Combos where the solver zeroed out a color are skipped: the smaller combo
-  // without it is enumerated on its own.
-  const candidatesByCount = new Map<number, ComboResult[]>();
-  forEachCombo(pool, target, targetLab, maxColors, (combo, size) => {
-    const used = combo.weights.filter((w) => w > MIN_WEIGHT).length;
-    if (used !== size) return;
-    const candidates = candidatesByCount.get(size) ?? [];
-    candidates.push(combo);
-    if (candidates.length > ROUNDING_CANDIDATES * 4) {
-      candidates.sort((a, b) => a.score - b.score);
-      candidates.length = ROUNDING_CANDIDATES;
-    }
-    candidatesByCount.set(size, candidates);
-  });
+  const swatches = library.map((clay) => ({ clay, rgb: hexToRgb(clay.hex) }));
+  const bySize = searchCombos(swatches, target, targetLab, maxColors);
 
   const recipes: Recipe[] = [];
-  const counts = [...candidatesByCount.keys()].sort((a, b) => a - b);
-  for (const count of counts) {
-    const recipe = candidatesByCount
-      .get(count)!
-      .sort((a, b) => a.score - b.score)
+  for (const size of [...bySize.keys()].sort((a, b) => a - b)) {
+    const recipe = bySize
+      .get(size)!
       .slice(0, ROUNDING_CANDIDATES)
-      .map((combo) => buildRecipe(pool, combo, targetLab))
+      .map((combo) => refineInLab(combo, swatches, targetLab))
+      .map((combo) => buildRecipe(swatches, combo, targetLab))
       .reduce((best, r) => (isBetterRecipe(r, best) ? r : best));
     const previous = recipes[recipes.length - 1];
     if (
