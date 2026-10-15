@@ -1,6 +1,13 @@
 "use client";
 
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useLibrary } from "@/context/LibraryContext";
 import { ImageMarkerCanvas } from "@/components/ImageMarkerCanvas";
@@ -8,6 +15,7 @@ import { PaletteMarkerList } from "@/components/PaletteMarkerList";
 import {
   ImageLoadError,
   ImageLoadErrorKind,
+  imageFromClipboard,
   loadImagePixels,
   parseImageUrl,
 } from "@/lib/imageSource";
@@ -16,9 +24,11 @@ import { analyzeImage, extractPalette, PixelGrid } from "@/lib/palette";
 import { computeRecipe } from "@/lib/mix";
 import { Recipe } from "@/lib/types";
 import {
+  buildPaletteSearch,
   DEFAULT_MIN_PERCENT,
   MAX_PERCENT,
   MIN_PERCENT,
+  parsePaletteSearch,
   Point,
 } from "@/lib/paletteUrl";
 
@@ -32,6 +42,13 @@ type Status =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "error"; error: ImageLoadErrorKind; pasted: boolean };
+
+/** Marker state restored from a share link. */
+interface SavedMarkers {
+  minPercent: number;
+  picked: Point[];
+  hidden: string[];
+}
 
 const MAX_RECIPE_COLORS = 6;
 
@@ -52,22 +69,24 @@ export default function PalettePage() {
   // Scanned colors the user removed, as hex without "#".
   const [hidden, setHidden] = useState<string[]>([]);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
+  const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
   const loadId = useRef(0);
 
-  const load = async (source: string | Blob) => {
+  const load = useCallback(async (source: string | Blob, saved?: SavedMarkers) => {
     const id = ++loadId.current;
     const pasted = typeof source !== "string";
     setStatus({ kind: "loading" });
     try {
       const pixels = await loadImagePixels(source);
-      // A newer scan started while this one loaded; let it win.
+      // A newer scan or paste started while this one loaded; let it win.
       if (id !== loadId.current) return;
       setImage({
         pixels,
         sourceUrl: typeof source === "string" ? parseImageUrl(source) : null,
       });
-      setPicked([]);
-      setHidden([]);
+      if (saved) setMinPercent(saved.minPercent);
+      setPicked(saved?.picked ?? []);
+      setHidden(saved?.hidden ?? []);
       setHighlightedKey(null);
       setStatus({ kind: "idle" });
     } catch (err) {
@@ -78,7 +97,33 @@ export default function PalettePage() {
         pasted,
       });
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Share links carry the image and markers in the query string, which is
+    // only readable client-side in a static export.
+    const saved = parsePaletteSearch(window.location.search);
+    if (!saved) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUrlInput(saved.img);
+    load(saved.img, {
+      minPercent: saved.minPercent,
+      picked: saved.added,
+      hidden: saved.hidden,
+    });
+  }, [load]);
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const file = imageFromClipboard(e.clipboardData);
+      if (!file) return; // text pastes, like into the URL field, behave normally
+      e.preventDefault();
+      setUrlInput("");
+      load(file);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [load]);
 
   // Analysis runs once per image; the slider only re-filters its result.
   const analysis = useMemo(() => (image ? analyzeImage(image.pixels) : null), [image]);
@@ -103,6 +148,36 @@ export default function PalettePage() {
     }
     return byHex;
   }, [recipeHexes, inStockColors]);
+
+  const sharePath = image?.sourceUrl
+    ? `/palette/${buildPaletteSearch({
+        img: image.sourceUrl,
+        minPercent,
+        added: picked,
+        hidden,
+      })}`
+    : null;
+  const hasImage = image !== null;
+
+  useEffect(() => {
+    // Until an image loads, leave the URL alone: it may be a share link
+    // whose image is still loading (or failed to).
+    if (!hasImage) return;
+    // Debounced: the slider fires continuously while dragging, and browsers
+    // throttle rapid history updates.
+    const timeout = setTimeout(() => {
+      window.history.replaceState(null, "", sharePath ?? "/palette/");
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [hasImage, sharePath]);
+
+  const copyLink = async () => {
+    if (!sharePath) return;
+    const url = new URL(sharePath, window.location.origin).toString();
+    await navigator.clipboard.writeText(url);
+    setShareStatus("copied");
+    setTimeout(() => setShareStatus("idle"), 2000);
+  };
 
   const addMarker = (x: number, y: number) =>
     setPicked((prev) =>
@@ -152,6 +227,15 @@ export default function PalettePage() {
             {status.kind === "loading" ? "Scanning…" : "Scan"}
           </button>
         </form>
+        <p
+          className={`text-xs ${
+            status.kind === "error" && status.error === "blocked"
+              ? "font-medium text-neutral-900"
+              : "text-neutral-500"
+          }`}
+        >
+          …or paste an image anywhere on this page.
+        </p>
         {status.kind === "error" && (
           <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
             {errorMessage(status.error, status.pasted)}
@@ -189,18 +273,29 @@ export default function PalettePage() {
           </div>
 
           <div className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
-              Minimum share: {minPercent}%
-              <input
-                type="range"
-                min={MIN_PERCENT}
-                max={MAX_PERCENT}
-                step={1}
-                value={minPercent}
-                onChange={(e) => setMinPercent(Number(e.target.value))}
-                className="accent-neutral-900"
-              />
-            </label>
+            <div className="flex items-end gap-4">
+              <label className="flex flex-1 flex-col gap-1 text-sm font-medium text-neutral-700">
+                Minimum share: {minPercent}%
+                <input
+                  type="range"
+                  min={MIN_PERCENT}
+                  max={MAX_PERCENT}
+                  step={1}
+                  value={minPercent}
+                  onChange={(e) => setMinPercent(Number(e.target.value))}
+                  className="accent-neutral-900"
+                />
+              </label>
+              {sharePath && (
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+                >
+                  {shareStatus === "copied" ? "Copied" : "Copy"}
+                </button>
+              )}
+            </div>
 
             {scanned.length === 0 && (
               <p className="rounded-lg border border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-600">
