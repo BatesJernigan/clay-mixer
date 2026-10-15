@@ -38,7 +38,7 @@ export function RecipeResult({ recipe, targetHex }: RecipeResultProps) {
 
       {recipe.ingredients.length > 1 && (
         <p className="mt-4 text-sm text-neutral-500">
-          Ratio <span className="font-mono text-neutral-800">{recipe.ratioLabel}</span>
+          Ratio <span className="ml-1 font-mono text-neutral-800">{recipe.ratioLabel}</span>
         </p>
       )}
 

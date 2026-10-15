@@ -114,17 +114,9 @@ export default function MixerPage() {
     );
   };
 
-  const share = async () => {
+  const copyLink = async () => {
     if (!sharePath) return;
     const url = new URL(sharePath, window.location.origin).toString();
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: `Clay mix for ${targetHex}`, url });
-      } catch {
-        // User dismissed the share sheet.
-      }
-      return;
-    }
     await navigator.clipboard.writeText(url);
     setShareStatus("copied");
     setTimeout(() => setShareStatus("idle"), 2000);
@@ -169,10 +161,10 @@ export default function MixerPage() {
               {sharePath && (
                 <button
                   type="button"
-                  onClick={share}
+                  onClick={copyLink}
                   className="ml-auto rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
                 >
-                  {shareStatus === "copied" ? "Link copied" : "Share"}
+                  {shareStatus === "copied" ? "Copied" : "Copy"}
                 </button>
               )}
             </div>
