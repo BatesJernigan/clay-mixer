@@ -310,7 +310,7 @@ export default function PalettePage() {
       )}
 
       {image && (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="md:sticky md:top-6 md:self-start">
             <ImageMarkerCanvas
               pixels={image.pixels}
