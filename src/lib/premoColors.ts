@@ -7,7 +7,7 @@ import { ClayColor } from "./types";
  * rather than a manufacturer-published hex spec.
  * Source: https://www.sculpey.com/products/sculpey-premo%E2%84%A2-oven-bake-clay
  */
-export const PREMO_BRAND = "Premo Sculpey";
+export const PREMO_BRAND = "Sculpey Premo";
 
 const PRODUCT_URL =
   "https://www.sculpey.com/products/sculpey-premo%E2%84%A2-oven-bake-clay";

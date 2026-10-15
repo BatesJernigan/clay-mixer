@@ -10,6 +10,7 @@ import {
 } from "react";
 import { ClayColor, clayKey } from "@/lib/types";
 import { catalogUrl, seedLibrary } from "@/lib/seedLibrary";
+import { PREMO_BRAND } from "@/lib/premoColors";
 
 const STORAGE_KEY = "clay-mixer:library";
 const OUT_OF_STOCK_KEY = "clay-mixer:out-of-stock";
@@ -28,6 +29,21 @@ interface LibraryContextValue {
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
+
+// Brand names that have since been renamed, so saved libraries keep matching
+// the catalog (and its product links).
+const LEGACY_BRAND = "Premo Sculpey";
+
+function renameBrand(brand: string): string {
+  return brand === LEGACY_BRAND ? PREMO_BRAND : brand;
+}
+
+function renameBrandKey(key: string): string {
+  const legacyPrefix = `${LEGACY_BRAND.toLowerCase()}::`;
+  return key.startsWith(legacyPrefix)
+    ? `${PREMO_BRAND.toLowerCase()}::${key.slice(legacyPrefix.length)}`
+    : key;
+}
 
 function readStorage(key: string): unknown[] | null {
   if (typeof window === "undefined") return null;
@@ -50,14 +66,20 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // localStorage isn't available during SSR, so the real library can only be
     // read client-side after mount; a render-time read would mismatch hydration.
-    const stored = readStorage(STORAGE_KEY) as ClayColor[] | null;
+    const stored = (readStorage(STORAGE_KEY) as ClayColor[] | null)?.map(
+      (c) => ({ ...c, brand: renameBrand(c.brand) })
+    );
     // Libraries saved before product links existed get them filled in.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setColors(
       stored?.map((c) => (c.url ? c : { ...c, url: catalogUrl(c) })) ??
         seedLibrary()
     );
-    setOutOfStock(new Set((readStorage(OUT_OF_STOCK_KEY) as string[]) ?? []));
+    setOutOfStock(
+      new Set(
+        ((readStorage(OUT_OF_STOCK_KEY) as string[]) ?? []).map(renameBrandKey)
+      )
+    );
     setLoaded(true);
   }, []);
 

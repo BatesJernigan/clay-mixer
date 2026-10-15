@@ -113,7 +113,7 @@ function AddColorForm() {
             list="brand-options"
             value={brand}
             onChange={(e) => setBrand(e.target.value)}
-            placeholder="e.g. Premo Sculpey"
+            placeholder="e.g. Sculpey Premo"
             className="w-48 rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
           />
           <datalist id="brand-options">
