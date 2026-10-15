@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useLibrary } from "@/context/LibraryContext";
 import { ImageMarkerCanvas } from "@/components/ImageMarkerCanvas";
 import { PaletteMarkerList } from "@/components/PaletteMarkerList";
 import {
@@ -11,6 +13,8 @@ import {
 } from "@/lib/imageSource";
 import { buildMarkers, Marker } from "@/lib/markers";
 import { analyzeImage, extractPalette, PixelGrid } from "@/lib/palette";
+import { computeRecipe } from "@/lib/mix";
+import { Recipe } from "@/lib/types";
 import {
   DEFAULT_MIN_PERCENT,
   MAX_PERCENT,
@@ -29,6 +33,8 @@ type Status =
   | { kind: "loading" }
   | { kind: "error"; error: ImageLoadErrorKind; pasted: boolean };
 
+const MAX_RECIPE_COLORS = 6;
+
 function errorMessage(error: ImageLoadErrorKind, pasted: boolean): string {
   if (error === "blocked") {
     return "This site doesn't allow its images to be read. Right-click the image → Copy Image, then paste it here.";
@@ -37,6 +43,7 @@ function errorMessage(error: ImageLoadErrorKind, pasted: boolean): string {
 }
 
 export default function PalettePage() {
+  const { colors: library, inStockColors, loaded } = useLibrary();
   const [urlInput, setUrlInput] = useState("");
   const [image, setImage] = useState<LoadedImage | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -83,6 +90,19 @@ export default function PalettePage() {
     () => (image ? buildMarkers(scanned, picked, hidden, image.pixels) : []),
     [image, scanned, picked, hidden]
   );
+
+  // Recipes take tens of ms each, so they trail marker changes instead of
+  // making the slider stutter.
+  const recipeHexes = useDeferredValue(markers.map((m) => m.hex).join(","));
+  const recipes = useMemo(() => {
+    const byHex = new Map<string, Recipe | null>();
+    for (const hex of recipeHexes ? recipeHexes.split(",") : []) {
+      if (!byHex.has(hex)) {
+        byHex.set(hex, computeRecipe(inStockColors, hex, { maxColors: MAX_RECIPE_COLORS }));
+      }
+    }
+    return byHex;
+  }, [recipeHexes, inStockColors]);
 
   const addMarker = (x: number, y: number) =>
     setPicked((prev) =>
@@ -139,6 +159,20 @@ export default function PalettePage() {
         )}
       </div>
 
+      {loaded && library.length === 0 && (
+        <div className="mb-6 rounded-lg border border-dashed border-neutral-300 bg-white p-6 text-center">
+          <p className="text-sm text-neutral-700">
+            Your library is empty, so there are no recipes yet. Add some clay colors first.
+          </p>
+          <Link
+            href="/library"
+            className="mt-3 inline-block rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+          >
+            Go to Library
+          </Link>
+        </div>
+      )}
+
       {image && (
         <div className="grid gap-6 md:grid-cols-2">
           <div className="md:sticky md:top-6 md:self-start">
@@ -176,6 +210,7 @@ export default function PalettePage() {
 
             <PaletteMarkerList
               markers={markers}
+              recipes={loaded && library.length > 0 ? recipes : null}
               highlightedKey={highlightedKey}
               onHover={setHighlightedKey}
               onRemove={removeMarker}

@@ -1,11 +1,19 @@
 "use client";
 
 import { Marker } from "@/lib/markers";
+import { Recipe } from "@/lib/types";
 import { ColorSwatch } from "./ColorSwatch";
 import { markerBadgeStyle } from "./ImageMarkerCanvas";
+import { RecipeResult } from "./RecipeResult";
 
 interface PaletteMarkerListProps {
   markers: Marker[];
+  /**
+   * Best recipe per marker hex. A missing hex is still being computed; null
+   * means there are no in-stock clays. A null map (empty library) hides
+   * recipes entirely.
+   */
+  recipes: Map<string, Recipe | null> | null;
   highlightedKey: string | null;
   onHover: (key: string | null) => void;
   onRemove: (marker: Marker) => void;
@@ -13,6 +21,7 @@ interface PaletteMarkerListProps {
 
 export function PaletteMarkerList({
   markers,
+  recipes,
   highlightedKey,
   onHover,
   onRemove,
@@ -51,8 +60,44 @@ export function PaletteMarkerList({
               ×
             </button>
           </div>
+
+          {recipes && (
+            <MarkerRecipe recipe={recipes.get(marker.hex)} targetHex={marker.hex} />
+          )}
         </li>
       ))}
     </ul>
+  );
+}
+
+function MarkerRecipe({
+  recipe,
+  targetHex,
+}: {
+  recipe: Recipe | null | undefined;
+  targetHex: string;
+}) {
+  if (recipe === undefined) {
+    return <p className="mt-3 text-sm text-neutral-500">Mixing…</p>;
+  }
+  if (recipe === null) {
+    return <p className="mt-3 text-sm text-neutral-500">No in-stock clays to mix from.</p>;
+  }
+  return (
+    <details className="group mt-3">
+      <summary className="flex cursor-pointer list-none items-center gap-3 text-sm text-neutral-700">
+        <span className="text-neutral-400 transition-transform group-open:rotate-90">▸</span>
+        <ColorSwatch hex={recipe.predictedHex} size={20} />
+        <span className="min-w-0 flex-1 truncate">
+          {recipe.ingredients.map((i) => `${i.parts} ${i.clay.name}`).join(" + ")}
+        </span>
+        <span className="shrink-0 text-xs text-neutral-500">
+          ΔE {recipe.deltaE.toFixed(1)}
+        </span>
+      </summary>
+      <div className="mt-3">
+        <RecipeResult recipe={recipe} targetHex={targetHex} />
+      </div>
+    </details>
   );
 }
