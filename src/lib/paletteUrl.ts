@@ -24,9 +24,13 @@ function clampPercent(value: number): number {
 }
 
 function parsePoints(text: string): Point[] {
+  const seen = new Set<string>();
   return text.split(";").flatMap((pair) => {
     const match = /^(\d+),(\d+)$/.exec(pair.trim());
-    return match ? [{ x: Number(match[1]), y: Number(match[2]) }] : [];
+    // Repeats are dropped: each point is one marker, removed as one.
+    if (!match || seen.has(match[0])) return [];
+    seen.add(match[0]);
+    return [{ x: Number(match[1]), y: Number(match[2]) }];
   });
 }
 

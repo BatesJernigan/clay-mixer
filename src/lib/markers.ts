@@ -1,4 +1,5 @@
-import { PaletteColor, PixelGrid, pixelHex } from "./palette";
+import { deltaE, hexToLab } from "./color";
+import { MIN_ALPHA, PaletteColor, PixelGrid, pixelHex } from "./palette";
 import { Point } from "./paletteUrl";
 
 export interface Marker {
@@ -15,6 +16,18 @@ export interface Marker {
   share: number | null;
 }
 
+/**
+ * A hidden hex also hides scanned colors this close to it (ΔE): the same image
+ * can decode a shade differently on another browser or device, and a shared
+ * link should still hide the color it named.
+ */
+export const HIDE_MATCH_DELTA_E = 5;
+
+function isHidden(hex: string, hidden: string[]): boolean {
+  const lab = hexToLab(hex);
+  return hidden.some((h) => deltaE(lab, hexToLab(h)) < HIDE_MATCH_DELTA_E);
+}
+
 /** A, B, …, Z, AA, AB, … */
 export function markerLabel(index: number): string {
   const letter = String.fromCharCode(65 + (index % 26));
@@ -29,7 +42,7 @@ export function buildMarkers(
   pixels: PixelGrid
 ): Marker[] {
   const fromScan = scanned
-    .filter((c) => !hidden.includes(c.hex.slice(1)))
+    .filter((c) => !isHidden(c.hex, hidden))
     .map((c) => ({
       key: `scan-${c.hex}-${c.x}-${c.y}`,
       hex: c.hex,
@@ -39,7 +52,15 @@ export function buildMarkers(
       share: c.share,
     }));
   const fromPicks = picked
-    .filter((p) => p.x >= 0 && p.y >= 0 && p.x < pixels.width && p.y < pixels.height)
+    .filter(
+      (p) =>
+        p.x >= 0 &&
+        p.y >= 0 &&
+        p.x < pixels.width &&
+        p.y < pixels.height &&
+        // A transparent spot has no color to mix; it would read as black.
+        pixels.data[(p.y * pixels.width + p.x) * 4 + 3] >= MIN_ALPHA
+    )
     .map((p) => ({
       key: `pick-${p.x}-${p.y}`,
       hex: pixelHex(pixels, p.x, p.y),

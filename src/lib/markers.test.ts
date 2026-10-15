@@ -49,6 +49,22 @@ describe("buildMarkers", () => {
     expect(markers.map((m) => [m.x, m.y])).toEqual([[1, 1]]);
   });
 
+  it("hides scanned colors that decode a shade off on another device", () => {
+    // A link made where maroon decoded to #61050a, opened where it's #60050a.
+    const markers = buildMarkers(scanned, [], ["61050a"], pixels);
+    expect(markers.map((m) => m.hex)).toEqual(["#ee3a4b"]);
+  });
+
+  it("ignores picks on transparent pixels", () => {
+    const clear = new Uint8ClampedArray(data);
+    clear[3] = 0; // pixel (0, 0) fully transparent
+    const markers = buildMarkers([], [{ x: 0, y: 0 }, { x: 1, y: 0 }], [], {
+      ...pixels,
+      data: clear,
+    });
+    expect(markers.map((m) => [m.x, m.y])).toEqual([[1, 0]]);
+  });
+
   it("gives every marker a distinct key", () => {
     const markers = buildMarkers(scanned, [{ x: 0, y: 0 }, { x: 1, y: 0 }], [], pixels);
     expect(new Set(markers.map((m) => m.key)).size).toBe(markers.length);

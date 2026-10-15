@@ -65,4 +65,13 @@ describe("parsePaletteSearch", () => {
     ]);
     expect(parsed?.hidden).toEqual(["5a0f12"]);
   });
+
+  it("drops repeated points, so one marker isn't listed twice", () => {
+    expect(
+      parsePaletteSearch(`?img=${encodeURIComponent(IMG)}&add=5,5;6,6;5,5`)?.added
+    ).toEqual([
+      { x: 5, y: 5 },
+      { x: 6, y: 6 },
+    ]);
+  });
 });

@@ -36,7 +36,8 @@ export const MERGE_DELTA_E = 10;
 export const MAJORITY_PASSES = 2;
 export const MAX_SCANNED_COLORS = 10;
 
-const MIN_ALPHA = 128;
+/** Pixels less opaque than this are treated as background and ignored. */
+export const MIN_ALPHA = 128;
 
 interface Sample {
   width: number;
