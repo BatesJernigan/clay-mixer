@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useLibrary } from "@/context/LibraryContext";
 import { ColorSwatch } from "@/components/ColorSwatch";
 import { HexColorField } from "@/components/HexColorField";
-import { ShopLinks } from "@/components/ShopLinks";
+import { BuyLink } from "@/components/BuyLink";
 import { ClayColor } from "@/lib/types";
 import { isValidHex, normalizeHex } from "@/lib/color";
 import { premoColors, PREMO_BRAND } from "@/lib/premoColors";
@@ -68,23 +68,39 @@ function ImportBrandButton({
   );
 }
 
+function isValidUrl(value: string): boolean {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
 function AddColorForm() {
   const { addColor, colors } = useLibrary();
   const [brand, setBrand] = useState("");
   const [name, setName] = useState("");
   const [hex, setHex] = useState("#cccccc");
+  const [url, setUrl] = useState("");
 
   const knownBrands = useMemo(
     () => Array.from(new Set(colors.map((c) => c.brand))).sort(),
     [colors]
   );
 
-  const canSubmit = brand.trim() && name.trim() && isValidHex(hex);
+  const urlValid = !url.trim() || isValidUrl(url.trim());
+  const canSubmit = brand.trim() && name.trim() && isValidHex(hex) && urlValid;
 
   const submit = () => {
     if (!canSubmit) return;
-    addColor({ brand: brand.trim(), name: name.trim(), hex: normalizeHex(hex) });
+    addColor({
+      brand: brand.trim(),
+      name: name.trim(),
+      hex: normalizeHex(hex),
+      url: url.trim() || undefined,
+    });
     setName("");
+    setUrl("");
   };
 
   return (
@@ -119,6 +135,22 @@ function AddColorForm() {
 
         <HexColorField value={hex} onChange={setHex} label="Hex" />
 
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-neutral-700">
+            Product link <span className="font-normal text-neutral-400">(optional)</span>
+          </label>
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://…"
+            aria-invalid={!urlValid}
+            className={`w-64 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 ${
+              urlValid ? "border-neutral-300" : "border-red-400"
+            }`}
+          />
+        </div>
+
         <button
           onClick={submit}
           disabled={!canSubmit}
@@ -138,7 +170,7 @@ function LibraryRow({ clay }: { clay: ClayColor }) {
       <div className="flex-1">
         <p className="text-sm font-medium text-neutral-900">{clay.name}</p>
         <p className="text-xs font-mono text-neutral-500">{clay.hex}</p>
-        <ShopLinks clay={clay} />
+        <BuyLink clay={clay} />
       </div>
     </li>
   );

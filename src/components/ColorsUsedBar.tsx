@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { clayKey, useLibrary } from "@/context/LibraryContext";
-import { ClayColor, Recipe } from "@/lib/types";
+import { useLibrary } from "@/context/LibraryContext";
+import { ClayColor, Recipe, clayKey } from "@/lib/types";
 
 /**
  * Every clay the shown recipes call for, plus any the person has marked out

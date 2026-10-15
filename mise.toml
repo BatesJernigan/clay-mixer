@@ -28,6 +28,6 @@ depends = ["install"]
 run = "npm run cf:preview"
 
 [tasks.deploy]
-description = "Build and deploy to clay.batesjernigan.com (set NEXT_PUBLIC_AMAZON_TAG for affiliate links)"
+description = "Build and deploy to clay.batesjernigan.com"
 depends = ["install"]
 run = "npm run deploy"

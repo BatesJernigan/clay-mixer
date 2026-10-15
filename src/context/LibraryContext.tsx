@@ -8,19 +8,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ClayColor } from "@/lib/types";
-import { seedLibrary } from "@/lib/seedLibrary";
+import { ClayColor, clayKey } from "@/lib/types";
+import { catalogUrl, seedLibrary } from "@/lib/seedLibrary";
 
 const STORAGE_KEY = "clay-mixer:library";
 const OUT_OF_STOCK_KEY = "clay-mixer:out-of-stock";
-
-/**
- * Identifies a clay by brand + name rather than id: seeded ids are
- * regenerated whenever the starter library is reloaded.
- */
-export function clayKey(clay: Pick<ClayColor, "brand" | "name">): string {
-  return `${clay.brand.toLowerCase()}::${clay.name.toLowerCase()}`;
-}
 
 interface LibraryContextValue {
   colors: ClayColor[];
@@ -59,8 +51,12 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     // localStorage isn't available during SSR, so the real library can only be
     // read client-side after mount; a render-time read would mismatch hydration.
     const stored = readStorage(STORAGE_KEY) as ClayColor[] | null;
+    // Libraries saved before product links existed get them filled in.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setColors(stored ?? seedLibrary());
+    setColors(
+      stored?.map((c) => (c.url ? c : { ...c, url: catalogUrl(c) })) ??
+        seedLibrary()
+    );
     setOutOfStock(new Set((readStorage(OUT_OF_STOCK_KEY) as string[]) ?? []));
     setLoaded(true);
   }, []);
