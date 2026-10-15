@@ -62,21 +62,21 @@ interface PaletteColor {
   y: number;
 }
 
-// Expensive, run once per image: downsample + Lab conversion + k-means.
+// Run once per image (~60 ms on the reference image): every step below
+// except the threshold, none of which depends on the slider.
 function analyzeImage(pixels: PixelGrid): ImageAnalysis;
 
-// Cheap, re-run on every slider change: merge, blend-drop, threshold, locate.
+// Cheap, re-run on every slider change: threshold + cap.
 function extractPalette(analysis: ImageAnalysis, opts: { minShare: number }): PaletteColor[];
 ```
 
-`ImageAnalysis` is opaque to callers; it holds the downsampled Lab pixels, the
-initial cluster assignment, and the scale factor back to original coordinates.
+`ImageAnalysis` is `{ colors: PaletteColor[] }`: every color the image breaks
+down into, largest share first, already located.
 
 ### `src/lib/imageSource.ts` — image loading
 
 ```ts
-function loadImagePixels(source: string | Blob): Promise<LoadedImage>;
-// LoadedImage = { pixels: PixelGrid (full resolution), objectUrl: string }
+function loadImagePixels(source: string | Blob): Promise<PixelGrid>;
 
 class ImageLoadError extends Error {
   kind: "invalid-url" | "load-failed" | "blocked";
@@ -84,9 +84,15 @@ class ImageLoadError extends Error {
 ```
 
 - `string` → `<img crossOrigin="anonymous">`; `Blob` → `URL.createObjectURL`.
-- Both decode through the same canvas path into a `PixelGrid`.
-- A `SecurityError` from `getImageData` (tainted canvas) maps to `kind: "blocked"`.
-- Full-resolution pixels are kept so hand-placed markers sample exact colors.
+- Both decode through the same canvas path into a `PixelGrid`. The page
+  draws the image from that grid, so no object URL outlives the load.
+- A CORS-less host makes a `crossOrigin` image fail to load outright, so on
+  failure the loader retries without `crossOrigin`: if that loads, the image
+  exists but is unreadable (`blocked`); otherwise `load-failed`. A
+  `SecurityError` from `getImageData` also maps to `blocked`.
+- Images are decoded at up to 4096 px on the long side (`MAX_DECODE_SIDE`);
+  "image pixel coordinates" everywhere mean coordinates in that decoded grid.
+  Hand-placed markers sample it exactly.
 
 ### `src/components/ImageMarkerCanvas.tsx`
 
@@ -149,9 +155,18 @@ All tunables are named constants at the top of `palette.ts`.
 | `ANALYSIS_MAX_SIDE` | 200 px | Downsample target for the long side |
 | `INITIAL_CLUSTERS` | 16 | k-means k |
 | `MERGE_DELTA_E` | 10 | Clusters closer than this merge |
-| `BLEND_LINE_DISTANCE` | 8 (Lab units) | Max distance from the A–B segment to count as a blend |
-| `BLEND_MAX_SOLIDITY` | 0.5 | Blends must be at most this solid |
+| `MAJORITY_PASSES` | 2 | Passes of the 3×3 majority filter that absorbs in-between pixels |
 | `MAX_SCANNED_COLORS` | 10 | Cap on scanned markers |
+
+> **Revised during planning (2026-10-14).** The original step 4 dropped a
+> cluster when it sat near the Lab line between two bigger clusters *and* was
+> scattered. Prototyping on the reference image showed both tests fail on real
+> JPEGs: compression noise makes even the solid yellow lettering read as
+> scattered (solidity 0.14), and stipple/edge colors sit 9–13 ΔE off any
+> blend line in both Lab and sRGB. A 3×3 majority filter on the cluster
+> labels does the same job with no geometry: on the reference image it yields
+> exactly coral `#ee3a4b`, maroon `#60050a`, yellow-green `#e1e22f` at 3%,
+> adding a dark coral and white at 1%.
 
 1. **Prepare.** Downsample to `ANALYSIS_MAX_SIDE`. Skip pixels with alpha < 128.
    Convert to Lab (`rgbToLab` from `color.ts`).
@@ -161,17 +176,12 @@ All tunables are named constants at the top of `palette.ts`.
 3. **Merge near-duplicates.** Repeatedly merge the closest pair of clusters
    whose centroids are within `MERGE_DELTA_E` (`deltaE` from `color.ts`),
    recomputing the merged centroid weighted by pixel count.
-4. **Drop blends.** For each cluster C, consider every pair of larger clusters
-   A and B. C is a blend if **both**:
-   - its centroid lies within `BLEND_LINE_DISTANCE` of segment AB in Lab, with
-     projection parameter t in [0.1, 0.9]; and
-   - its *solidity* — the fraction of its pixels whose 4 neighbors all belong
-     to C — is at most `BLEND_MAX_SOLIDITY`.
-
-   Solid in-between colors (e.g. a real orange band between red and yellow)
-   survive; scattered stipple/anti-alias/shadow-edge pixels do not. Blend
-   pixels are reassigned to the nearest surviving centroid. Process clusters
-   smallest-first; repeat until no cluster is dropped.
+4. **Absorb in-between pixels.** Run `MAJORITY_PASSES` passes of a 3×3
+   majority filter over the cluster labels: each pixel takes the most common
+   label in its neighborhood, keeping its own on a tie. Scattered pixels
+   (stipple mid-tones, anti-aliased edges, JPEG noise) join the color around
+   them; solid regions, including a real in-between color such as an orange
+   band between red and yellow, are untouched. Recount cluster sizes after.
 5. **Threshold.** Keep clusters with share ≥ `minShare`, largest first, capped
    at `MAX_SCANNED_COLORS`.
 6. **Swatch and dot.** For each kept cluster, find its largest 4-connected
@@ -202,8 +212,8 @@ Add Vitest (dev dependency + `test` script) to unit-test `palette.ts` with
 synthetic `PixelGrid`s:
 
 - Solid color blocks are recovered with correct hexes and shares.
-- A stippled two-color pattern next to solid regions of each color yields
-  2 colors, not 3.
+- Isolated pixels of an in-between color scattered over two solid regions
+  yield 2 colors, not 3.
 - A solid band of an in-between color is kept.
 - Colors below `minShare` are excluded.
 - Dot coordinates fall inside the largest patch of their color, scaled to
