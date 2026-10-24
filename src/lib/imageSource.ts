@@ -121,3 +121,6 @@ export async function loadImagePixels(source: string | Blob): Promise<PixelGrid>
     throw new ImageLoadError("blocked");
   }
 }
+
+/** Largest image file the bead chart page accepts. */
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
