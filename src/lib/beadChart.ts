@@ -40,6 +40,13 @@ export const BACKGROUND_DELTA_E = 18;
 export const BORDER_AGREEMENT = 0.5;
 /** Most colors "Match image" can use: the spec's 12, or the whole catalog if smaller. */
 export const MATCH_MAX_COLORS = Math.min(12, ponyBeadColors.length);
+/** Passes of the speck cleanup filter. */
+export const CLEANUP_PASSES = 2;
+/**
+ * A bead only joins the color around it when the two are closer than this
+ * (ΔE): Orange in Red (41) is absorbed, Black in White (87) is kept.
+ */
+export const SPECK_DELTA_E = 45;
 /** Below this lightness range the subject is one shade, and k-means has nothing to split. */
 const SINGLE_SHADE_RANGE = 10;
 const LIGHTNESS_ITERATIONS = 20;
@@ -276,6 +283,58 @@ function assignByMatch(
   for (const i of subject) beads[i] = nearestBead(cells[i]!, candidates);
 }
 
+/**
+ * Gives each bead the most common bead in its 3×3 neighborhood, keeping its
+ * own on a tie, but only when the two are close shades: stray specks join
+ * the area around them, while a high-contrast single bead (an eye) stays.
+ */
+function cleanUpSpecks(beads: Int16Array, width: number, height: number) {
+  const counts = new Map<number, number>();
+  for (let pass = 0; pass < CLEANUP_PASSES; pass++) {
+    const source = beads.slice();
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const own = source[y * width + x];
+        if (own < 0) continue;
+        counts.clear();
+        for (let ny = Math.max(0, y - 1); ny <= Math.min(height - 1, y + 1); ny++) {
+          for (let nx = Math.max(0, x - 1); nx <= Math.min(width - 1, x + 1); nx++) {
+            const b = source[ny * width + nx];
+            if (b >= 0) counts.set(b, (counts.get(b) ?? 0) + 1);
+          }
+        }
+        let best = own;
+        let bestCount = counts.get(own)!;
+        for (const [b, n] of counts) {
+          if (n > bestCount) {
+            best = b;
+            bestCount = n;
+          }
+        }
+        if (best !== own && deltaE(beadLab[own], beadLab[best]) < SPECK_DELTA_E) {
+          beads[y * width + x] = best;
+        }
+      }
+    }
+  }
+}
+
+/** Turns subject beads next to an empty cell into the darkest bead in use. */
+function outlineSubject(beads: Int16Array, width: number, height: number) {
+  let darkest = -1;
+  for (const b of beads) {
+    if (b >= 0 && (darkest < 0 || beadLab[b].l < beadLab[darkest].l)) darkest = b;
+  }
+  if (darkest < 0) return;
+
+  const source = beads.slice();
+  source.forEach((b, i) => {
+    if (b >= 0 && neighbors4(i, width, height).some((n) => source[n] < 0)) {
+      beads[i] = darkest;
+    }
+  });
+}
+
 /** Turns catalog indices per cell into the chart's own palette, counts and cells. */
 function finish(beads: Int16Array, width: number, height: number): BeadChart {
   const catalogCounts = new Array(ponyBeadColors.length).fill(0);
@@ -321,6 +380,9 @@ export function buildBeadChart(pixels: PixelGrid, opts: BeadChartOptions): BeadC
       assignByMatch(cells, subject, opts.colors.count, beads);
       break;
   }
+
+  cleanUpSpecks(beads, width, height);
+  if (opts.outline && opts.removeBackground) outlineSubject(beads, width, height);
 
   return finish(beads, width, height);
 }

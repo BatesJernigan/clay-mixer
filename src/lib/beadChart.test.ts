@@ -190,6 +190,64 @@ describe("buildBeadChart match image", () => {
   });
 });
 
+describe("buildBeadChart cleanup and outline", () => {
+  const match = (overrides: Partial<BeadChartOptions> = {}) =>
+    options({ colors: { mode: "match", count: 2 }, removeBackground: false, ...overrides });
+  const bead = (name: string) => rgbOf(beadByName(name).hex);
+
+  it("absorbs a stray cell of a close shade", () => {
+    const img = square(30, 2, bead("Orange"), bead("Red"));
+    expect(buildBeadChart(img, match()).palette.map((b) => b.name)).not.toContain("Orange");
+  });
+
+  it("keeps a high-contrast single cell, like an eye", () => {
+    const chart = buildBeadChart(square(30, 2, BLACK, WHITE), match());
+    expect(nameAt(chart, 7, 7)).toBe("Black");
+  });
+
+  /** A yellow square on white with a one-cell royal-blue patch in its middle. */
+  const badge = grid(30, 30, (x, y) => {
+    if (x >= 14 && x < 16 && y >= 14 && y < 16) return bead("Royal Blue");
+    if (x >= 8 && x < 22 && y >= 8 && y < 22) return bead("Yellow");
+    return WHITE;
+  });
+
+  /** Subject cells with at least one empty neighbor. */
+  function edgeCells(chart: BeadChart): number[] {
+    const out: number[] = [];
+    chart.cells.forEach((c, i) => {
+      const x = i % chart.width;
+      const y = (i - x) / chart.width;
+      const empty = (nx: number, ny: number) =>
+        nx >= 0 && ny >= 0 && nx < chart.width && ny < chart.height &&
+        chart.cells[ny * chart.width + nx] < 0;
+      if (c >= 0 && (empty(x - 1, y) || empty(x + 1, y) || empty(x, y - 1) || empty(x, y + 1))) {
+        out.push(i);
+      }
+    });
+    return out;
+  }
+
+  it("outlines the subject in its darkest chosen bead", () => {
+    const chart = buildBeadChart(badge, match({ removeBackground: true, outline: true }));
+    const edges = edgeCells(chart);
+    expect(edges.length).toBeGreaterThan(0);
+    for (const i of edges) expect(chart.palette[chart.cells[i]].name).toBe("Royal Blue");
+    expect(chart.palette.length).toBeLessThanOrEqual(2);
+  });
+
+  it("leaves the edge alone with outline off", () => {
+    const chart = buildBeadChart(badge, match({ removeBackground: true }));
+    for (const i of edgeCells(chart)) expect(chart.palette[chart.cells[i]].name).toBe("Yellow");
+  });
+
+  it("does nothing with outline on but background removal off", () => {
+    const on = buildBeadChart(badge, match({ outline: true }));
+    const off = buildBeadChart(badge, match());
+    expect(on.cells).toEqual(off.cells);
+  });
+});
+
 describe("buildBeadChart", () => {
   it("fills every cell from an image smaller than the grid", () => {
     const img = grid(3, 3, (x, y) => ((x + y) % 2 ? BLACK : WHITE));
