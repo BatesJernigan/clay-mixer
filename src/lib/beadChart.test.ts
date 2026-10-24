@@ -248,6 +248,45 @@ describe("buildBeadChart cleanup and outline", () => {
   });
 });
 
+describe("buildBeadChart edge blends", () => {
+  const bead = (name: string) => rgbOf(beadByName(name).hex);
+
+  it("doesn't turn a split inside a cell into a third color", () => {
+    // 30px at 15 cells: the split at x=15 lands inside cell 7, which
+    // averages to purple.
+    const img = grid(30, 30, (x) => (x < 15 ? bead("Red") : bead("Royal Blue")));
+    const chart = buildBeadChart(
+      img,
+      options({ colors: { mode: "match", count: 6 }, removeBackground: false })
+    );
+    expect(chart.palette.map((b) => b.name).sort()).toEqual(["Red", "Royal Blue"]);
+  });
+
+  it("keeps the outline in a real color, not an edge blend", () => {
+    const img = grid(30, 30, (x, y) =>
+      y < 6 || y >= 24 || x < 6 || x >= 24 ? WHITE : x < 15 ? bead("Red") : bead("Royal Blue")
+    );
+    const chart = buildBeadChart(
+      img,
+      options({ colors: { mode: "match", count: 6 }, outline: true })
+    );
+    expect(chart.palette.map((b) => b.name)).not.toContain("Purple");
+  });
+
+  it("drops a soft halo between the subject and the background", () => {
+    // A blue square with a one-cell ring halfway between blue and white.
+    const img = grid(30, 30, (x, y) => {
+      if (x >= 10 && x < 20 && y >= 10 && y < 20) return BLUE;
+      if (x >= 8 && x < 22 && y >= 8 && y < 22) return [128, 128, 255];
+      return WHITE;
+    });
+    const chart = buildBeadChart(img, options());
+    // The ring joins whichever side it's nearer, never a ring of White beads.
+    expect(nameAt(chart, 7, 7)).toBe("Black");
+    expect(chart.palette.map((b) => b.name)).toEqual(["Black"]);
+  });
+});
+
 describe("buildBeadChart", () => {
   it("fills every cell from an image smaller than the grid", () => {
     const img = grid(3, 3, (x, y) => ((x + y) % 2 ? BLACK : WHITE));

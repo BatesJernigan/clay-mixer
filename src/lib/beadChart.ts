@@ -1,5 +1,5 @@
 import { Lab, deltaE, hexToRgb, rgbToLab } from "./color";
-import { kMeans, medianCutSeeds, MIN_ALPHA, PixelGrid } from "./palette";
+import { INITIAL_CLUSTERS, kMeans, medianCutSeeds, MIN_ALPHA, PixelGrid } from "./palette";
 import { BeadColor, beadByName, ponyBeadColors } from "./ponyBeadColors";
 
 export type ColorMode =
@@ -40,6 +40,19 @@ export const BACKGROUND_DELTA_E = 18;
 export const BORDER_AGREEMENT = 0.5;
 /** Most colors "Match image" can use: the spec's 12, or the whole catalog if smaller. */
 export const MATCH_MAX_COLORS = Math.min(12, ponyBeadColors.length);
+/**
+ * A cell is an edge blend when its color lies (nearly) on the line between
+ * its two opposite neighbors: the detour through it is at most this many
+ * times their direct distance.
+ */
+export const BLEND_SLACK = 1.15;
+/**
+ * Opposite neighbors must differ by at least this (ΔE) to count as an edge,
+ * so smooth shading inside one area isn't flattened.
+ */
+export const BLEND_MIN_DELTA_E = 45;
+/** A blend cell must differ from both sides by at least this (ΔE). */
+export const BLEND_SIDE_DELTA_E = 10;
 /** Passes of the speck cleanup filter. */
 export const CLEANUP_PASSES = 2;
 /**
@@ -179,6 +192,64 @@ function findBackground(cells: CellColor[], width: number, height: number): Uint
   return background;
 }
 
+/** Opposite neighbor offsets (dx, dy): left/right, up/down and both diagonals. */
+const OPPOSITE_PAIRS: [number, number][] = [
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [1, -1],
+];
+
+/**
+ * A cell straddling the edge between two areas averages to an in-between
+ * color (a red/blue edge turns purple; a soft edge on white turns pale).
+ * Left alone it becomes its own bead color, spending a color slot and, when
+ * darker, taking over the outline. Each such cell instead joins the nearer
+ * side: the subject's color, or the background. Reads the original colors
+ * throughout, so blends don't cascade.
+ */
+function resolveEdgeBlends(
+  cells: CellColor[],
+  background: Uint8Array,
+  width: number,
+  height: number
+) {
+  const source = cells.slice();
+  const sourceBackground = background.slice();
+  const at = (x: number, y: number) =>
+    x < 0 || y < 0 || x >= width || y >= height ? -1 : y * width + x;
+
+  for (let i = 0; i < source.length; i++) {
+    const own = source[i];
+    if (!own || sourceBackground[i]) continue;
+    const x = i % width;
+    const y = (i - x) / width;
+
+    let best = -1;
+    let bestRatio = BLEND_SLACK;
+    for (const [dx, dy] of OPPOSITE_PAIRS) {
+      const a = at(x - dx, y - dy);
+      const b = at(x + dx, y + dy);
+      if (a < 0 || b < 0 || !source[a] || !source[b]) continue;
+      const span = deltaE(source[a]!, source[b]!);
+      if (span < BLEND_MIN_DELTA_E) continue;
+      const da = deltaE(source[a]!, own);
+      const db = deltaE(own, source[b]!);
+      // A neighbor of (nearly) the same color isn't the other side of an
+      // edge; it's more of the same blend, as along a halo ring.
+      if (Math.min(da, db) < BLEND_SIDE_DELTA_E) continue;
+      const ratio = (da + db) / span;
+      if (ratio < bestRatio) {
+        bestRatio = ratio;
+        best = da <= db ? a : b;
+      }
+    }
+    if (best < 0) continue;
+    if (sourceBackground[best]) background[i] = 1;
+    else cells[i] = source[best];
+  }
+}
+
 function catalogIndex(name: string): number {
   return ponyBeadColors.indexOf(beadByName(name));
 }
@@ -268,16 +339,23 @@ function assignByMatch(
   if (subject.length === 0) return;
   const k = Math.max(1, Math.min(MATCH_MAX_COLORS, Math.round(count)));
   const points = subject.map((i) => cells[i]!);
-  const { centroids, assignment } = kMeans(points, medianCutSeeds(points, k));
+  // Cluster finer than `k`, then keep the largest: clustering straight to k
+  // lets a one-cell oddity take a slot and merge two real areas instead.
+  const { centroids, assignment } = kMeans(
+    points,
+    medianCutSeeds(points, Math.max(k, INITIAL_CLUSTERS))
+  );
 
   const sizes = new Array(centroids.length).fill(0);
   for (const c of assignment) sizes[c]++;
   const allBeads = [...ponyBeadColors.keys()];
   const chosen = new Set<number>();
-  [...centroids.keys()]
+  for (const c of [...centroids.keys()]
     .filter((c) => sizes[c] > 0)
-    .sort((a, b) => sizes[b] - sizes[a] || a - b)
-    .forEach((c) => chosen.add(nearestBead(centroids[c], allBeads)));
+    .sort((a, b) => sizes[b] - sizes[a] || a - b)) {
+    if (chosen.size === k) break;
+    chosen.add(nearestBead(centroids[c], allBeads));
+  }
 
   const candidates = [...chosen];
   for (const i of subject) beads[i] = nearestBead(cells[i]!, candidates);
@@ -361,6 +439,7 @@ export function buildBeadChart(pixels: PixelGrid, opts: BeadChartOptions): BeadC
   const background = opts.removeBackground
     ? findBackground(cells, width, height)
     : new Uint8Array(cells.length);
+  resolveEdgeBlends(cells, background, width, height);
 
   const subject: number[] = [];
   cells.forEach((c, i) => {
