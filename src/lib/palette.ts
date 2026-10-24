@@ -169,7 +169,7 @@ function meanLab(points: Lab[]): Lab {
  * channel range at its median. Same input, same seeds, same palette, which
  * shared links depend on.
  */
-function medianCutSeeds(points: Lab[], k: number): Lab[] {
+export function medianCutSeeds(points: Lab[], k: number): Lab[] {
   const boxes: Lab[][] = [points];
   while (boxes.length < k) {
     let best = -1;
@@ -214,7 +214,7 @@ function nearest(p: Lab, centers: Lab[]): number {
   return best;
 }
 
-function kMeans(points: Lab[], seeds: Lab[]) {
+export function kMeans(points: Lab[], seeds: Lab[]) {
   let centroids = seeds;
   const assignment = new Int32Array(points.length);
   for (let iter = 0; iter < KMEANS_MAX_ITERATIONS; iter++) {

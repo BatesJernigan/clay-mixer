@@ -1,5 +1,5 @@
 import { Lab, deltaE, hexToRgb, rgbToLab } from "./color";
-import { MIN_ALPHA, PixelGrid } from "./palette";
+import { kMeans, medianCutSeeds, MIN_ALPHA, PixelGrid } from "./palette";
 import { BeadColor, beadByName, ponyBeadColors } from "./ponyBeadColors";
 
 export type ColorMode =
@@ -38,6 +38,8 @@ export const BACKGROUND_DELTA_E = 18;
  * eating into the subject.
  */
 export const BORDER_AGREEMENT = 0.5;
+/** Most colors "Match image" can use: the spec's 12, or the whole catalog if smaller. */
+export const MATCH_MAX_COLORS = Math.min(12, ponyBeadColors.length);
 /** Below this lightness range the subject is one shade, and k-means has nothing to split. */
 const SINGLE_SHADE_RANGE = 10;
 const LIGHTNESS_ITERATIONS = 20;
@@ -236,6 +238,44 @@ function assignByLightness(
   subject.forEach((cell, j) => (beads[cell] = preset[rank[assignment[j]]]));
 }
 
+function nearestBead(lab: Lab, candidates: number[]): number {
+  let best = candidates[0];
+  for (const b of candidates) {
+    if (deltaE(lab, beadLab[b]) < deltaE(lab, beadLab[best])) best = b;
+  }
+  return best;
+}
+
+/**
+ * Match image: clusters the subject's colors and snaps each cluster, largest
+ * first, to its nearest catalog bead. Clusters that snap to a bead already
+ * taken merge into it, so fewer than `count` beads may come back. Writes
+ * catalog indices.
+ */
+function assignByMatch(
+  cells: CellColor[],
+  subject: number[],
+  count: number,
+  beads: Int16Array
+) {
+  if (subject.length === 0) return;
+  const k = Math.max(1, Math.min(MATCH_MAX_COLORS, Math.round(count)));
+  const points = subject.map((i) => cells[i]!);
+  const { centroids, assignment } = kMeans(points, medianCutSeeds(points, k));
+
+  const sizes = new Array(centroids.length).fill(0);
+  for (const c of assignment) sizes[c]++;
+  const allBeads = [...ponyBeadColors.keys()];
+  const chosen = new Set<number>();
+  [...centroids.keys()]
+    .filter((c) => sizes[c] > 0)
+    .sort((a, b) => sizes[b] - sizes[a] || a - b)
+    .forEach((c) => chosen.add(nearestBead(centroids[c], allBeads)));
+
+  const candidates = [...chosen];
+  for (const i of subject) beads[i] = nearestBead(cells[i]!, candidates);
+}
+
 /** Turns catalog indices per cell into the chart's own palette, counts and cells. */
 function finish(beads: Int16Array, width: number, height: number): BeadChart {
   const catalogCounts = new Array(ponyBeadColors.length).fill(0);
@@ -278,7 +318,8 @@ export function buildBeadChart(pixels: PixelGrid, opts: BeadChartOptions): BeadC
       assignByLightness(cells, subject, ["Black", "Gray", "White"], beads);
       break;
     case "match":
-      throw new Error("Match mode is not implemented yet");
+      assignByMatch(cells, subject, opts.colors.count, beads);
+      break;
   }
 
   return finish(beads, width, height);

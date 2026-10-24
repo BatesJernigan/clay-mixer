@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { BeadChart, BeadChartOptions, buildBeadChart, shrinkImage } from "./beadChart";
+import {
+  BeadChart,
+  BeadChartOptions,
+  buildBeadChart,
+  MATCH_MAX_COLORS,
+  shrinkImage,
+} from "./beadChart";
 import { PixelGrid, pixelHex } from "./palette";
+import { beadByName, ponyBeadColors } from "./ponyBeadColors";
 
 type RGBA = [number, number, number, number?];
 
@@ -138,6 +145,48 @@ describe("buildBeadChart black and white", () => {
   it("maps a single light shade to white", () => {
     const chart = buildBeadChart(square(30, 10, YELLOW, WHITE), options());
     expect(nameAt(chart, 7, 7)).toBe("White");
+  });
+});
+
+/** An image of exact catalog colors, so match mode has unambiguous answers. */
+function rgbOf(hex: string): RGBA {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function quadrants(names: string[]): PixelGrid {
+  const colors = names.map((n) => rgbOf(beadByName(n).hex));
+  return grid(30, 30, (x, y) => colors[(y < 15 ? 0 : 2) + (x < 15 ? 0 : 1)]);
+}
+
+describe("buildBeadChart match image", () => {
+  const four = ["Red", "Yellow", "Royal Blue", "Kelly Green"];
+  const match = (count: number) =>
+    options({ colors: { mode: "match", count }, removeBackground: false });
+
+  it("finds each solid color as its catalog bead", () => {
+    const chart = buildBeadChart(quadrants(four), match(4));
+    expect(chart.palette.map((b) => b.name).sort()).toEqual([...four].sort());
+  });
+
+  it("uses no more colors than asked for, all from the catalog", () => {
+    const chart = buildBeadChart(quadrants(four), match(2));
+    expect(chart.palette.length).toBeLessThanOrEqual(2);
+    for (const bead of chart.palette) expect(ponyBeadColors).toContain(bead);
+  });
+
+  it("returns fewer colors when the image has fewer", () => {
+    // Split on a cell edge (2px cells): a split inside a cell averages to a
+    // real in-between color.
+    const img = grid(30, 30, (x) => (x < 16 ? rgbOf(beadByName("Red").hex) : WHITE));
+    expect(buildBeadChart(img, match(6)).palette).toHaveLength(2);
+  });
+
+  it("caps an oversized count at the catalog", () => {
+    const img = grid(40, 30, (x, y) => [x * 6, y * 8, (x * y) % 255]);
+    const chart = buildBeadChart(img, match(50));
+    expect(chart.palette.length).toBeLessThanOrEqual(MATCH_MAX_COLORS);
+    expect(new Set(chart.palette).size).toBe(chart.palette.length);
   });
 });
 
