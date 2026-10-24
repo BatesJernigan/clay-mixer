@@ -1,7 +1,8 @@
+import { memo } from "react";
 import { BeadChart } from "@/lib/beadChart";
 
 /** How many beads of each color the chart needs, most first, and the total. */
-export function BeadCountList({ chart }: { chart: BeadChart }) {
+export const BeadCountList = memo(function BeadCountList({ chart }: { chart: BeadChart }) {
   const rows = chart.palette
     .map((bead, i) => ({ bead, count: chart.counts[i] }))
     .sort((a, b) => b.count - a.count || a.bead.name.localeCompare(b.bead.name));
@@ -28,4 +29,4 @@ export function BeadCountList({ chart }: { chart: BeadChart }) {
       </div>
     </div>
   );
-}
+});

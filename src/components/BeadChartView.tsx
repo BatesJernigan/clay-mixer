@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { BeadChart } from "@/lib/beadChart";
 
 /** Room, in bead widths, for the row and column numbers. */
@@ -9,8 +10,10 @@ const RULER_STEP = 5;
 /**
  * The bead chart: one circle per bead in its color, empty cells as faint
  * dashed circles, numbered every five beads. Scales to its container's width.
+ * Memoized: the page defers chart rebuilds, which only helps if the urgent
+ * re-render on each keystroke skips this (up to 10,000-circle) tree.
  */
-export function BeadChartView({ chart }: { chart: BeadChart }) {
+export const BeadChartView = memo(function BeadChartView({ chart }: { chart: BeadChart }) {
   const { width, height, cells, palette } = chart;
   const marks = (n: number) =>
     Array.from({ length: Math.floor(n / RULER_STEP) }, (_, i) => (i + 1) * RULER_STEP);
@@ -63,4 +66,4 @@ export function BeadChartView({ chart }: { chart: BeadChart }) {
       })}
     </svg>
   );
-}
+});
