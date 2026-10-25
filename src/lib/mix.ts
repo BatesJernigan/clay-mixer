@@ -191,6 +191,7 @@ function searchCombos(
 
   const singles = keep(swatches.map((_, i) => fit([i])));
   bySize.set(1, singles);
+  if (maxColors < 2) return bySize;
 
   const pairs: (Combo | null)[] = [];
   for (let i = 0; i < n; i++) {
