@@ -36,3 +36,7 @@ run = "npm run cf:preview"
 description = "Build and deploy to clay.batesjernigan.com"
 depends = ["install"]
 run = "npm run deploy"
+
+[tasks.repo]
+description = "Open github repo"
+run = "open https://github.com/batesjernigan/clay-mixer"
