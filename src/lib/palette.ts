@@ -67,6 +67,43 @@ export function pixelHex(pixels: PixelGrid, x: number, y: number): string {
 }
 
 /** Breaks an image down into its colors. Tens of ms: run once per image. */
+/**
+ * Image pixels across the round spot a pick averages: the loupe shows exactly
+ * this circle, so the color the user sees in it is the color they get.
+ */
+export const SPOT_DIAMETER = 11;
+
+/**
+ * Average color of the round spot centered on (cx, cy), skipping pixels that are
+ * off the image or transparent. Null when the center itself is transparent:
+ * a click on background isn't a color to mix, even beside an opaque edge.
+ */
+export function spotHex(pixels: PixelGrid, cx: number, cy: number): string | null {
+  const { width, height, data } = pixels;
+  if (data[(cy * width + cx) * 4 + 3] < MIN_ALPHA) return null;
+  const half = Math.floor(SPOT_DIAMETER / 2);
+  const r2 = (SPOT_DIAMETER / 2) ** 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let dy = -half; dy <= half; dy++) {
+    const y = cy + dy;
+    if (y < 0 || y >= height) continue;
+    for (let dx = -half; dx <= half; dx++) {
+      const x = cx + dx;
+      if (x < 0 || x >= width || dx * dx + dy * dy > r2) continue;
+      const o = (y * width + x) * 4;
+      if (data[o + 3] < MIN_ALPHA) continue;
+      r += data[o];
+      g += data[o + 1];
+      b += data[o + 2];
+      n++;
+    }
+  }
+  return rgbToHex({ r: r / n, g: g / n, b: b / n });
+}
+
 export function analyzeImage(pixels: PixelGrid): ImageAnalysis {
   const sample = downsample(pixels);
   if (sample.opaque.length === 0) return { colors: [] };

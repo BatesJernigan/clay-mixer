@@ -17,10 +17,11 @@ describe("markerLabel", () => {
 });
 
 describe("buildMarkers", () => {
-  // 4×2 image: top row red, bottom row blue.
-  const data = new Uint8ClampedArray(4 * 2 * 4);
-  for (let i = 0; i < 8; i++) data.set(i < 4 ? [255, 0, 0, 255] : [0, 0, 255, 255], i * 4);
-  const pixels: PixelGrid = { width: 4, height: 2, data };
+  // 4×40 image: top half red, bottom half blue. Picks a spot's width from the
+  // seam read one color.
+  const data = new Uint8ClampedArray(4 * 40 * 4);
+  for (let i = 0; i < 160; i++) data.set(i < 80 ? [255, 0, 0, 255] : [0, 0, 255, 255], i * 4);
+  const pixels: PixelGrid = { width: 4, height: 40, data };
 
   const scanned: PaletteColor[] = [
     { hex: "#ee3a4b", share: 0.56, x: 1, y: 0 },
@@ -28,7 +29,7 @@ describe("buildMarkers", () => {
   ];
 
   it("letters scanned colors first, then picks in the order added", () => {
-    const markers = buildMarkers(scanned, [{ x: 3, y: 1 }], [], pixels);
+    const markers = buildMarkers(scanned, [{ x: 3, y: 39 }], [], pixels);
     expect(markers.map((m) => [m.label, m.hex, m.source, m.share])).toEqual([
       ["A", "#ee3a4b", "scan", 0.56],
       ["B", "#60050a", "scan", 0.3],
@@ -45,7 +46,7 @@ describe("buildMarkers", () => {
   });
 
   it("drops picks outside the image, as from a link made for another image", () => {
-    const markers = buildMarkers([], [{ x: 4, y: 0 }, { x: 0, y: 2 }, { x: 1, y: 1 }], [], pixels);
+    const markers = buildMarkers([], [{ x: 4, y: 0 }, { x: 0, y: 40 }, { x: 1, y: 1 }], [], pixels);
     expect(markers.map((m) => [m.x, m.y])).toEqual([[1, 1]]);
   });
 
@@ -68,5 +69,20 @@ describe("buildMarkers", () => {
   it("gives every marker a distinct key", () => {
     const markers = buildMarkers(scanned, [{ x: 0, y: 0 }, { x: 1, y: 0 }], [], pixels);
     expect(new Set(markers.map((m) => m.key)).size).toBe(markers.length);
+  });
+});
+
+describe("buildMarkers picks", () => {
+  it("take the average color of the spot, not the single pixel clicked", () => {
+    // Fine black/white checkerboard: every pixel is black or white, the spot reads gray.
+    const w = 21;
+    const data = new Uint8ClampedArray(w * w * 4);
+    for (let i = 0; i < w * w; i++) {
+      const v = (i % w) % 2 === Math.floor(i / w) % 2 ? 255 : 0;
+      data.set([v, v, v, 255], i * 4);
+    }
+    const [marker] = buildMarkers([], [{ x: 10, y: 10 }], [], { width: w, height: w, data });
+    expect(marker.hex).not.toBe("#ffffff");
+    expect(marker.hex).not.toBe("#000000");
   });
 });
