@@ -3,10 +3,10 @@
 import { CSSProperties, PointerEvent, useEffect, useRef, useState } from "react";
 import { hexToLab } from "@/lib/color";
 import { Marker } from "@/lib/markers";
-import { PixelGrid, pixelHex } from "@/lib/palette";
+import { PixelGrid, pixelHex, SPOT_DIAMETER, spotHex } from "@/lib/palette";
 
-/** Pixels across the loupe, and how large each one is drawn. */
-const LOUPE_PIXELS = 11;
+/** Pixels across the loupe (the spot a pick averages), and how large each is drawn. */
+const LOUPE_PIXELS = SPOT_DIAMETER;
 const LOUPE_ZOOM = 12;
 const LOUPE_SIZE = LOUPE_PIXELS * LOUPE_ZOOM;
 /** Gap between the pointer and the loupe. */
@@ -83,24 +83,32 @@ export function ImageMarkerCanvas({
     if (!canvas || !loupe) return;
     const ctx = canvas.getContext("2d")!;
     const half = Math.floor(LOUPE_PIXELS / 2);
+    const r2 = (LOUPE_PIXELS / 2) ** 2;
     ctx.clearRect(0, 0, LOUPE_SIZE, LOUPE_SIZE);
     for (let dy = -half; dy <= half; dy++) {
       for (let dx = -half; dx <= half; dx++) {
         const x = loupe.x + dx;
         const y = loupe.y + dy;
         if (x < 0 || y < 0 || x >= pixels.width || y >= pixels.height) continue;
+        if (dx * dx + dy * dy > r2) continue; // outside the averaged spot
         ctx.fillStyle = pixelHex(pixels, x, y);
         ctx.fillRect((dx + half) * LOUPE_ZOOM, (dy + half) * LOUPE_ZOOM, LOUPE_ZOOM, LOUPE_ZOOM);
       }
     }
-    // Outline the pixel that will be picked, legible on light and dark.
-    const at = half * LOUPE_ZOOM;
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#ffffff";
-    ctx.strokeRect(at, at, LOUPE_ZOOM, LOUPE_ZOOM);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "#000000";
-    ctx.strokeRect(at - 1.5, at - 1.5, LOUPE_ZOOM + 3, LOUPE_ZOOM + 3);
+    // The whole circle is averaged, so mark only where the marker will sit:
+    // a small crosshair, legible on light and dark.
+    const c = LOUPE_SIZE / 2;
+    const arm = LOUPE_ZOOM / 2;
+    for (const [width, color] of [[3, "#000000"], [1, "#ffffff"]] as const) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(c - arm, c);
+      ctx.lineTo(c + arm, c);
+      ctx.moveTo(c, c - arm);
+      ctx.lineTo(c, c + arm);
+      ctx.stroke();
+    }
   }, [loupe, pixels]);
 
   useEffect(() => {
@@ -258,7 +266,7 @@ export function ImageMarkerCanvas({
             className="rounded px-1.5 py-0.5 font-mono text-xs"
             style={{ color: "#ffffff", background: "rgba(0,0,0,0.75)" }}
           >
-            {pixelHex(pixels, loupe.x, loupe.y)}
+            {spotHex(pixels, loupe.x, loupe.y) ?? "transparent"}
           </span>
         </div>
       )}

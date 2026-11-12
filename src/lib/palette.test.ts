@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analyzeImage, extractPalette, pixelHex, PixelGrid } from "./palette";
+import { hexToRgb } from "./color";
+import { analyzeImage, extractPalette, pixelHex, PixelGrid, SPOT_DIAMETER, spotHex } from "./palette";
 
 type RGBA = [number, number, number, number?];
 
@@ -115,5 +116,55 @@ describe("extractPalette", () => {
 describe("pixelHex", () => {
   it("reads one pixel", () => {
     expect(pixelHex(grid(2, 1, (x) => (x ? BLUE : RED)), 1, 0)).toBe("#0000ff");
+  });
+});
+
+describe("spotHex", () => {
+  /** w×h image filled by fill(x, y) → [r, g, b, a]. */
+  const grid = (w: number, h: number, fill: (x: number, y: number) => number[]): PixelGrid => {
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data.set(fill(x, y), (y * w + x) * 4);
+    return { width: w, height: h, data };
+  };
+
+  it("matches the pixel on a flat color", () => {
+    const pixels = grid(21, 21, () => [10, 120, 200, 255]);
+    expect(spotHex(pixels, 10, 10)).toBe("#0a78c8");
+  });
+
+  it("averages the spot rather than reading the center pixel", () => {
+    // Left half black, right half white, center column white: one pixel would say white.
+    const pixels = grid(21, 21, (x) => (x >= 10 ? [255, 255, 255, 255] : [0, 0, 0, 255]));
+    const { r, g, b } = hexToRgb(spotHex(pixels, 10, 10)!);
+    expect(r).toBe(g);
+    expect(g).toBe(b);
+    expect(r).toBeGreaterThan(110);
+    expect(r).toBeLessThan(160);
+  });
+
+  it("averages a round spot, not the square around it", () => {
+    // Corners of the 11×11 square are red; they sit outside the circle.
+    const half = Math.floor(SPOT_DIAMETER / 2);
+    const pixels = grid(SPOT_DIAMETER, SPOT_DIAMETER, (x, y) =>
+      (x - half) ** 2 + (y - half) ** 2 > (SPOT_DIAMETER / 2) ** 2
+        ? [255, 0, 0, 255]
+        : [0, 0, 255, 255]
+    );
+    expect(spotHex(pixels, half, half)).toBe("#0000ff");
+  });
+
+  it("uses only the part of the spot inside the image", () => {
+    const pixels = grid(3, 3, () => [40, 50, 60, 255]);
+    expect(spotHex(pixels, 0, 0)).toBe("#28323c");
+  });
+
+  it("leaves transparent pixels out of the average", () => {
+    const pixels = grid(21, 21, (x) => (x >= 10 ? [200, 100, 0, 255] : [0, 0, 0, 0]));
+    expect(spotHex(pixels, 10, 10)).toBe("#c86400");
+  });
+
+  it("is null on a transparent center", () => {
+    const pixels = grid(21, 21, (x) => (x === 10 ? [0, 0, 0, 0] : [200, 100, 0, 255]));
+    expect(spotHex(pixels, 10, 10)).toBeNull();
   });
 });

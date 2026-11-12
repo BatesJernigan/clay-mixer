@@ -1,5 +1,5 @@
 import { deltaE, hexToLab } from "./color";
-import { MIN_ALPHA, PaletteColor, PixelGrid, pixelHex } from "./palette";
+import { PaletteColor, PixelGrid, spotHex } from "./palette";
 import { Point } from "./paletteUrl";
 
 export interface Marker {
@@ -51,23 +51,12 @@ export function buildMarkers(
       source: "scan" as const,
       share: c.share,
     }));
-  const fromPicks = picked
-    .filter(
-      (p) =>
-        p.x >= 0 &&
-        p.y >= 0 &&
-        p.x < pixels.width &&
-        p.y < pixels.height &&
-        // A transparent spot has no color to mix; it would read as black.
-        pixels.data[(p.y * pixels.width + p.x) * 4 + 3] >= MIN_ALPHA
-    )
-    .map((p) => ({
-      key: `pick-${p.x}-${p.y}`,
-      hex: pixelHex(pixels, p.x, p.y),
-      x: p.x,
-      y: p.y,
-      source: "pick" as const,
-      share: null,
-    }));
+  const fromPicks = picked.flatMap((p) => {
+    if (p.x < 0 || p.y < 0 || p.x >= pixels.width || p.y >= pixels.height) return [];
+    // Null on a transparent spot: it has no color to mix and would read as black.
+    const hex = spotHex(pixels, p.x, p.y);
+    if (!hex) return [];
+    return [{ key: `pick-${p.x}-${p.y}`, hex, x: p.x, y: p.y, source: "pick" as const, share: null }];
+  });
   return [...fromScan, ...fromPicks].map((m, i) => ({ ...m, label: markerLabel(i) }));
 }
