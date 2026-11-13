@@ -5,6 +5,12 @@ import { useLibrary } from "@/context/LibraryContext";
 import { HexColorField } from "@/components/HexColorField";
 import { RecipeResult } from "@/components/RecipeResult";
 import { ColorsUsedBar } from "@/components/ColorsUsedBar";
+import { BrandFilter, useBrandFilter } from "@/components/BrandFilter";
+import {
+  BrandSelection,
+  formatBrandsParam,
+  parseBrandsParam,
+} from "@/lib/brandFilter";
 import { computeRecipesByColorCount } from "@/lib/mix";
 import { isValidHex, normalizeHex } from "@/lib/color";
 import Link from "next/link";
@@ -14,7 +20,7 @@ const MAX_RECIPE_COLORS = 6;
 
 interface MixUrlState {
   targetHex: string;
-  brands: string[] | null;
+  brands: BrandSelection;
 }
 
 /** Reads `/mix/<hex>?brands=A,B` from the current location. */
@@ -26,27 +32,24 @@ function readMixUrl(): MixUrlState | null {
   if (!hex || !isValidHex(hex)) return null;
 
   const params = new URLSearchParams(window.location.search);
-  const brands = params.get("brands");
-
   return {
     targetHex: normalizeHex(hex),
-    brands: brands ? brands.split(",").filter(Boolean) : null,
+    brands: parseBrandsParam(params.get("brands")),
   };
 }
 
 function buildMixPath({ targetHex, brands }: MixUrlState): string {
   const path = `/mix/${targetHex.replace("#", "")}`;
-  // Built by hand so the brand list stays readable (commas unescaped).
-  return brands
-    ? `${path}?brands=${brands.map(encodeURIComponent).join(",")}`
-    : path;
+  const brandsParam = formatBrandsParam(brands);
+  return brandsParam ? `${path}?brands=${brandsParam}` : path;
 }
 
 export default function MixerPage() {
-  const { colors, inStockColors, loaded } = useLibrary();
+  const { colors, loaded } = useLibrary();
+  const brandFilter = useBrandFilter();
+  const { selected: selectedBrands, setSelected: setSelectedBrands, availableColors } =
+    brandFilter;
   const [targetHex, setTargetHex] = useState(DEFAULT_HEX);
-  // null = every brand in the library; otherwise only these brands are used.
-  const [selectedBrands, setSelectedBrands] = useState<string[] | null>(null);
   const [targetChosen, setTargetChosen] = useState(false);
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
 
@@ -59,7 +62,7 @@ export default function MixerPage() {
     setTargetHex(fromUrl.targetHex);
     setSelectedBrands(fromUrl.brands);
     setTargetChosen(true);
-  }, []);
+  }, [setSelectedBrands]);
 
   const sharePath = targetChosen
     ? buildMixPath({ targetHex, brands: selectedBrands })
@@ -74,19 +77,6 @@ export default function MixerPage() {
     }, 300);
     return () => clearTimeout(timeout);
   }, [sharePath]);
-
-  const allBrands = useMemo(
-    () => Array.from(new Set(colors.map((c) => c.brand))).sort(),
-    [colors]
-  );
-
-  const availableColors = useMemo(
-    () =>
-      selectedBrands
-        ? inStockColors.filter((c) => selectedBrands.includes(c.brand))
-        : inStockColors,
-    [inStockColors, selectedBrands]
-  );
 
   // The search takes tens of milliseconds, so recipes trail the color picker
   // while dragging instead of making it stutter.
@@ -103,16 +93,6 @@ export default function MixerPage() {
     [availableColors, recipeHex]
   );
   const closestDeltaE = Math.min(...recipes.map((r) => r.deltaE));
-
-  const toggleBrand = (brand: string) => {
-    const current = selectedBrands ?? allBrands;
-    const next = current.includes(brand)
-      ? current.filter((b) => b !== brand)
-      : [...current, brand];
-    setSelectedBrands(
-      allBrands.every((b) => next.includes(b)) ? null : next.sort()
-    );
-  };
 
   const copyLink = async () => {
     if (!sharePath) return;
@@ -169,45 +149,7 @@ export default function MixerPage() {
               )}
             </div>
 
-            {allBrands.length > 1 && (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-neutral-700">
-                    Brands
-                  </span>
-                  {selectedBrands && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedBrands(null)}
-                      className="text-xs text-neutral-500 underline hover:text-neutral-800"
-                    >
-                      Use all
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {allBrands.map((brand) => {
-                    const active =
-                      !selectedBrands || selectedBrands.includes(brand);
-                    return (
-                      <button
-                        key={brand}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => toggleBrand(brand)}
-                        className={`rounded-full border px-3 py-1 text-sm ${
-                          active
-                            ? "border-neutral-900 bg-neutral-900 text-white"
-                            : "border-neutral-300 bg-white text-neutral-500 hover:text-neutral-800"
-                        }`}
-                      >
-                        {brand}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            <BrandFilter filter={brandFilter} />
           </div>
 
           <ColorsUsedBar recipes={recipes} />

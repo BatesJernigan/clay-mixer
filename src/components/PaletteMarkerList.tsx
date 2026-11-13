@@ -10,8 +10,8 @@ interface PaletteMarkerListProps {
   markers: Marker[];
   /**
    * Best recipe per marker hex. A missing hex is still being computed; null
-   * means there are no in-stock clays. A null map (empty library) hides
-   * recipes entirely.
+   * means there are no in-stock clays of the selected brands. A null map
+   * (empty library) hides recipes entirely.
    */
   recipes: Map<string, Recipe | null> | null;
   highlightedKey: string | null;
@@ -81,7 +81,7 @@ function MarkerRecipe({
     return <p className="mt-3 text-sm text-neutral-500">Mixing…</p>;
   }
   if (recipe === null) {
-    return <p className="mt-3 text-sm text-neutral-500">No in-stock clays to mix from.</p>;
+    return <p className="mt-3 text-sm text-neutral-500">No clays to mix from. Select a brand or restore an out-of-stock color.</p>;
   }
   return (
     <details className="group mt-3">
