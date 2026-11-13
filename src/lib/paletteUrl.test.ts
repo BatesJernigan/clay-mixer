@@ -18,23 +18,24 @@ describe("buildPaletteSearch / parsePaletteSearch", () => {
         { x: 95, y: 1200 },
       ],
       hidden: ["5a0f12", "ee3a4b"],
+      brands: ["Sculpey Premo", "Sculpey Souffle"],
     };
     const search = buildPaletteSearch(state);
     expect(search).toBe(
-      `?img=${encodeURIComponent(IMG)}&min=4&add=412,880;95,1200&hide=5a0f12,ee3a4b`
+      `?img=${encodeURIComponent(IMG)}&min=4&add=412,880;95,1200&hide=5a0f12,ee3a4b&brands=Sculpey%20Premo,Sculpey%20Souffle`
     );
     expect(parsePaletteSearch(search)).toEqual(state);
   });
 
   it("omits empty add and hide lists", () => {
     expect(
-      buildPaletteSearch({ img: IMG, minPercent: 3, added: [], hidden: [] })
+      buildPaletteSearch({ img: IMG, minPercent: 3, added: [], hidden: [], brands: null })
     ).toBe(`?img=${encodeURIComponent(IMG)}&min=3`);
   });
 
   it("round-trips image URLs that have their own query string", () => {
     const img = "https://example.com/pic.jpg?w=800&h=600";
-    const search = buildPaletteSearch({ img, minPercent: 3, added: [], hidden: [] });
+    const search = buildPaletteSearch({ img, minPercent: 3, added: [], hidden: [], brands: null });
     expect(parsePaletteSearch(search)?.img).toBe(img);
   });
 });

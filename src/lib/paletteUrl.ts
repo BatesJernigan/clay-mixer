@@ -1,3 +1,4 @@
+import { BrandSelection, formatBrandsParam, parseBrandsParam } from "./brandFilter";
 import { parseImageUrl } from "./imageSource";
 
 export interface Point {
@@ -13,6 +14,8 @@ export interface PaletteUrlState {
   added: Point[];
   /** Scanned colors the user removed, as 6-digit lowercase hex without "#". */
   hidden: string[];
+  /** Brands recipes mix from; null means every brand. */
+  brands: BrandSelection;
 }
 
 export const MIN_PERCENT = 1;
@@ -34,7 +37,7 @@ function parsePoints(text: string): Point[] {
   });
 }
 
-/** Reads `?img=…&min=…&add=…&hide=…`; null when there's no usable image URL. */
+/** Reads `?img=…&min=…&add=…&hide=…&brands=…`; null when there's no usable image URL. */
 export function parsePaletteSearch(search: string): PaletteUrlState | null {
   const params = new URLSearchParams(search);
   const img = parseImageUrl(params.get("img") ?? "");
@@ -52,6 +55,7 @@ export function parsePaletteSearch(search: string): PaletteUrlState | null {
       .split(",")
       .map((hex) => hex.trim().toLowerCase())
       .filter((hex) => /^[0-9a-f]{6}$/.test(hex)),
+    brands: parseBrandsParam(params.get("brands")),
   };
 }
 
@@ -62,5 +66,7 @@ export function buildPaletteSearch(state: PaletteUrlState): string {
     parts.push(`add=${state.added.map((p) => `${p.x},${p.y}`).join(";")}`);
   }
   if (state.hidden.length) parts.push(`hide=${state.hidden.join(",")}`);
+  const brands = formatBrandsParam(state.brands);
+  if (brands) parts.push(`brands=${brands}`);
   return `?${parts.join("&")}`;
 }

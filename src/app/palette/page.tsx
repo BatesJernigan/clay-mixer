@@ -12,6 +12,8 @@ import Link from "next/link";
 import { useLibrary } from "@/context/LibraryContext";
 import { ImageMarkerCanvas } from "@/components/ImageMarkerCanvas";
 import { PaletteMarkerList } from "@/components/PaletteMarkerList";
+import { BrandFilter, useBrandFilter } from "@/components/BrandFilter";
+import { ColorsUsedBar } from "@/components/ColorsUsedBar";
 import {
   ImageLoadError,
   ImageLoadErrorKind,
@@ -61,7 +63,10 @@ function errorMessage(error: ImageLoadErrorKind, fromFile: boolean): string {
 }
 
 export default function PalettePage() {
-  const { colors: library, inStockColors, loaded } = useLibrary();
+  const { colors: library, loaded } = useLibrary();
+  const brandFilter = useBrandFilter();
+  const { selected: selectedBrands, setSelected: setSelectedBrands, availableColors } =
+    brandFilter;
   const [urlInput, setUrlInput] = useState("");
   const [image, setImage] = useState<LoadedImage | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -108,12 +113,13 @@ export default function PalettePage() {
     if (!saved) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrlInput(saved.img);
+    setSelectedBrands(saved.brands);
     load(saved.img, {
       minPercent: saved.minPercent,
       picked: saved.added,
       hidden: saved.hidden,
     });
-  }, [load]);
+  }, [load, setSelectedBrands]);
 
   /** Loads a pasted, dropped or uploaded file; null means the user gave no image. */
   const loadFile = useCallback(
@@ -168,18 +174,24 @@ export default function PalettePage() {
     [image, scanned, picked, hidden]
   );
 
-  // Recipes take tens of ms each, so they trail marker changes instead of
-  // making the slider stutter.
+  // Recipes take tens of ms each, so they trail marker and filter changes
+  // instead of making the slider or the brand and stock toggles stutter.
   const recipeHexes = useDeferredValue(markers.map((m) => m.hex).join(","));
+  const recipeColors = useDeferredValue(availableColors);
   const recipes = useMemo(() => {
     const byHex = new Map<string, Recipe | null>();
     for (const hex of recipeHexes ? recipeHexes.split(",") : []) {
       if (!byHex.has(hex)) {
-        byHex.set(hex, computeRecipe(inStockColors, hex, { maxColors: MAX_RECIPE_COLORS }));
+        byHex.set(hex, computeRecipe(recipeColors, hex, { maxColors: MAX_RECIPE_COLORS }));
       }
     }
     return byHex;
-  }, [recipeHexes, inStockColors]);
+  }, [recipeHexes, recipeColors]);
+  const recipesStale = recipeColors !== availableColors;
+  const shownRecipes = useMemo(
+    () => [...recipes.values()].filter((r): r is Recipe => r !== null),
+    [recipes]
+  );
 
   const sharePath = image?.sourceUrl
     ? `/palette/${buildPaletteSearch({
@@ -187,6 +199,7 @@ export default function PalettePage() {
         minPercent,
         added: picked,
         hidden,
+        brands: selectedBrands,
       })}`
     : null;
   const hasImage = image !== null;
@@ -288,6 +301,11 @@ export default function PalettePage() {
         >
           …or paste or drop an image anywhere on this page.
         </p>
+        {loaded && library.length > 0 && (
+          <div className="mt-2 border-t border-neutral-100 pt-4">
+            <BrandFilter filter={brandFilter} />
+          </div>
+        )}
         {status.kind === "error" && (
           <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
             {errorMessage(status.error, status.fromFile)}
@@ -355,13 +373,20 @@ export default function PalettePage() {
               </p>
             )}
 
-            <PaletteMarkerList
-              markers={markers}
-              recipes={loaded && library.length > 0 ? recipes : null}
-              highlightedKey={highlightedKey}
-              onHover={setHighlightedKey}
-              onRemove={removeMarker}
-            />
+            <div
+              aria-busy={recipesStale}
+              className={`transition-opacity ${recipesStale ? "opacity-60" : ""}`}
+            >
+              <PaletteMarkerList
+                markers={markers}
+                recipes={loaded && library.length > 0 ? recipes : null}
+                highlightedKey={highlightedKey}
+                onHover={setHighlightedKey}
+                onRemove={removeMarker}
+              />
+            </div>
+
+            {loaded && library.length > 0 && <ColorsUsedBar recipes={shownRecipes} />}
           </div>
         </div>
       )}

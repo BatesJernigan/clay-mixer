@@ -11,6 +11,7 @@ import {
 import { ClayColor, clayKey } from "@/lib/types";
 import { catalogUrl, seedLibrary } from "@/lib/seedLibrary";
 import { PREMO_BRAND } from "@/lib/premoColors";
+import { LEGACY_PREMO_BRAND, renameBrand } from "@/lib/brandFilter";
 
 const STORAGE_KEY = "clay-mixer:library";
 const OUT_OF_STOCK_KEY = "clay-mixer:out-of-stock";
@@ -30,16 +31,8 @@ interface LibraryContextValue {
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
 
-// Brand names that have since been renamed, so saved libraries keep matching
-// the catalog (and its product links).
-const LEGACY_BRAND = "Premo Sculpey";
-
-function renameBrand(brand: string): string {
-  return brand === LEGACY_BRAND ? PREMO_BRAND : brand;
-}
-
 function renameBrandKey(key: string): string {
-  const legacyPrefix = `${LEGACY_BRAND.toLowerCase()}::`;
+  const legacyPrefix = `${LEGACY_PREMO_BRAND.toLowerCase()}::`;
   return key.startsWith(legacyPrefix)
     ? `${PREMO_BRAND.toLowerCase()}::${key.slice(legacyPrefix.length)}`
     : key;
